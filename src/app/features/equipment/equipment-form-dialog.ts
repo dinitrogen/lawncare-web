@@ -77,14 +77,17 @@ export interface EquipmentFormDialogData {
       display: flex;
       flex-direction: column;
       gap: 4px;
-      min-width: 350px;
+      width: 100%;
+      padding-top: 4px;
     }
     .form-row {
       display: flex;
       gap: 12px;
+      flex-wrap: wrap;
     }
     .form-row mat-form-field {
       flex: 1;
+      min-width: 140px;
     }
     .full-width {
       width: 100%;

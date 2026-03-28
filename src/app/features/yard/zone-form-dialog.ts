@@ -88,7 +88,8 @@ export interface ZoneFormDialogData {
       display: flex;
       flex-direction: column;
       gap: 4px;
-      min-width: 400px;
+      width: 100%;
+      padding-top: 4px;
     }
     .form-row {
       display: flex;
