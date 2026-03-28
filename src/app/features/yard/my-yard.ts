@@ -137,6 +137,7 @@ export class MyYardComponent implements OnInit {
   protected openZoneForm(zone?: YardZone): void {
     const dialogRef = this.dialog.open(ZoneFormDialogComponent, {
       width: '700px',
+      maxWidth: '95vw',
       maxHeight: '90vh',
       data: { zone } as ZoneFormDialogData,
     });
