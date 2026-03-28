@@ -4,8 +4,10 @@
   "short_name": "LawnCare",
   "description": "Personal lawn care management, GDD tracking, and treatment planning",
   "display": "standalone",
+  "orientation": "any",
   "theme_color": "#2e7d32",
   "background_color": "#fafafa",
+  "scope": "./",
   "start_url": "./",
   "icons": [
     {
