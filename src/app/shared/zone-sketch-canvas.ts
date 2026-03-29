@@ -150,6 +150,7 @@ type Tool = 'draw' | 'erase' | 'label';
       border-radius: 4px;
       overflow: auto;
       max-height: 400px;
+      width: 100%;
     }
     canvas {
       display: block;

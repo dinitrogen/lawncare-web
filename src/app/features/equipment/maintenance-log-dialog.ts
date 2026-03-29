@@ -70,7 +70,8 @@ export interface MaintenanceLogDialogData {
       display: flex;
       flex-direction: column;
       gap: 4px;
-      min-width: 350px;
+      width: 100%;
+      padding-top: 4px;
     }
     .full-width {
       width: 100%;
