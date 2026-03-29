@@ -11,10 +11,12 @@ import { YardService } from '../../core/services/yard.service';
 import { TreatmentService } from '../../core/services/treatment.service';
 import { GddService } from '../../core/services/gdd.service';
 import { SeasonalPlanService } from '../../core/services/seasonal-plan.service';
+import { WeatherService } from '../../core/services/weather.service';
 import { YardZone } from '../../core/models/yard.model';
 import { Treatment } from '../../core/models/treatment.model';
 import { DailyGddEntry, BUILT_IN_THRESHOLDS, GddThreshold } from '../../core/models/gdd.model';
 import { SeasonalTaskStatus, DEFAULT_SEASONAL_TASKS, SeasonalTask } from '../../core/models/seasonal-plan.model';
+import { WeatherReading } from '../../core/models/weather.model';
 
 @Component({
   selector: 'app-dashboard',
@@ -32,6 +34,46 @@ import { SeasonalTaskStatus, DEFAULT_SEASONAL_TASKS, SeasonalTask } from '../../
       <h1 class="page-title">Dashboard</h1>
 
       <div class="card-grid">
+        <!-- Weather Card -->
+        <mat-card>
+          <mat-card-header>
+            <mat-icon mat-card-avatar>cloud</mat-icon>
+            <mat-card-title>Weather Station</mat-card-title>
+            @if (weather(); as w) {
+              <mat-card-subtitle>Updated {{ formatTimestamp(w.timestamp) }}</mat-card-subtitle>
+            }
+          </mat-card-header>
+          <mat-card-content>
+            @if (weather(); as w) {
+              <div class="weather-summary">
+                <div class="weather-main">
+                  <span class="weather-temp">{{ cToF(w.outdoorTempC) }}&deg;F</span>
+                  @if (w.feelsLikeC !== null && w.feelsLikeC !== w.outdoorTempC) {
+                    <span class="weather-feels-like">Feels like {{ cToF(w.feelsLikeC) }}&deg;F</span>
+                  }
+                </div>
+                <div class="weather-details">
+                  @if (w.outdoorHumidityPct !== null) {
+                    <span><mat-icon inline>water_drop</mat-icon> {{ w.outdoorHumidityPct }}%</span>
+                  }
+                  @if (w.soilMoisturePct?.length) {
+                    <span><mat-icon inline>opacity</mat-icon> Soil {{ w.soilMoisturePct![0] }}%</span>
+                  }
+                </div>
+              </div>
+            } @else if (weatherError()) {
+              <p>No weather station data available.</p>
+            } @else {
+              <p>Loading weather data…</p>
+            }
+          </mat-card-content>
+          <mat-card-actions>
+            <button mat-button (click)="navigate('/weather')">
+              <mat-icon>open_in_new</mat-icon> View Details
+            </button>
+          </mat-card-actions>
+        </mat-card>
+
         <!-- GDD Summary Card -->
         <mat-card>
           <mat-card-header>
@@ -189,6 +231,37 @@ import { SeasonalTaskStatus, DEFAULT_SEASONAL_TASKS, SeasonalTask } from '../../
       opacity: 0.7;
       font-size: 14px;
     }
+    .weather-summary {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .weather-main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .weather-temp {
+      font-size: 48px;
+      font-weight: 300;
+      color: var(--primary-color);
+    }
+    .weather-feels-like {
+      font-size: 14px;
+      opacity: 0.7;
+    }
+    .weather-details {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      font-size: 14px;
+    }
+    .weather-details mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      vertical-align: text-bottom;
+    }
   `,
 })
 export class DashboardComponent implements OnInit {
@@ -197,6 +270,7 @@ export class DashboardComponent implements OnInit {
   private readonly treatmentService = inject(TreatmentService);
   private readonly gddService = inject(GddService);
   private readonly seasonalPlanService = inject(SeasonalPlanService);
+  private readonly weatherService = inject(WeatherService);
   private readonly router = inject(Router);
 
   protected readonly currentYear = new Date().getFullYear();
@@ -207,6 +281,8 @@ export class DashboardComponent implements OnInit {
   protected readonly treatments = signal<Treatment[] | null>(null);
   protected readonly gddData = signal<DailyGddEntry[] | null>(null);
   protected readonly seasonalStatuses = signal<SeasonalTaskStatus[]>([]);
+  protected readonly weather = signal<WeatherReading | null>(null);
+  protected readonly weatherError = signal(false);
 
   protected readonly latestCumulativeGdd = computed(() => {
     const data = this.gddData();
@@ -233,6 +309,10 @@ export class DashboardComponent implements OnInit {
     this.yardService.getZones(uid).subscribe((z) => this.zones.set(z));
     this.treatmentService.getTreatments(uid).subscribe((t) => this.treatments.set(t));
     this.seasonalPlanService.getStatuses(uid, this.currentYear).subscribe((s) => this.seasonalStatuses.set(s));
+    this.weatherService.getCurrent().subscribe({
+      next: (w) => this.weather.set(w),
+      error: () => this.weatherError.set(true),
+    });
 
     this.loadGddData(uid);
   }
@@ -267,5 +347,20 @@ export class DashboardComponent implements OnInit {
 
   protected navigate(path: string): void {
     this.router.navigate([path]);
+  }
+
+  protected cToF(c: number | null): string {
+    if (c === null) return '--';
+    return Math.round(c * 9 / 5 + 32).toString();
+  }
+
+  protected formatTimestamp(ts: string): string {
+    const date = new Date(ts);
+    const now = Date.now();
+    const diffMin = Math.round((now - date.getTime()) / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffMin < 1440) return `${Math.round(diffMin / 60)}h ago`;
+    return date.toLocaleDateString();
   }
 }

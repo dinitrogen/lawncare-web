@@ -21,6 +21,13 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'weather',
+        loadComponent: () =>
+          import('./features/weather/weather').then(
+            (m) => m.WeatherComponent
+          ),
+      },
+      {
         path: 'yard',
         loadComponent: () =>
           import('./features/yard/my-yard').then((m) => m.MyYardComponent),
