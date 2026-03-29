@@ -276,7 +276,9 @@ export class GddTrackerComponent implements OnInit {
       }
 
       const year = new Date().getFullYear();
-      const startDate = `${year}-02-15`;
+      const month = String(user.gddStartMonth ?? 1).padStart(2, '0');
+      const day = String(user.gddStartDay ?? 1).padStart(2, '0');
+      const startDate = `${year}-${month}-${day}`;
       const today = new Date().toISOString().split('T')[0];
       const data = await this.gddService.fetchGddData(
         coords.lat,

@@ -63,6 +63,21 @@ import { NotificationService } from '../../core/services/notification.service';
               <input matInput type="number" formControlName="tempOffset" />
               <mat-hint>Correction for local microclimate. Try -5 for lakefront locations. Default: 0</mat-hint>
             </mat-form-field>
+
+            <div class="gdd-row">
+              <mat-form-field appearance="outline">
+                <mat-label>GDD Start Month</mat-label>
+                <mat-select formControlName="gddStartMonth">
+                  @for (m of months; track m.value) {
+                    <mat-option [value]="m.value">{{ m.label }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>GDD Start Day</mat-label>
+                <input matInput type="number" formControlName="gddStartDay" min="1" max="31" />
+              </mat-form-field>
+            </div>
           </form>
         </mat-card-content>
         <mat-card-actions>
@@ -166,6 +181,22 @@ import { NotificationService } from '../../core/services/notification.service';
     mat-card {
       margin-bottom: 16px;
     }
+    mat-card-actions {
+      padding: 8px 16px 16px;
+    }
+    mat-card-actions button + button {
+      margin-left: 8px;
+    }
+    mat-slide-toggle {
+      margin: 4px 0;
+    }
+    .gdd-row {
+      display: flex;
+      gap: 12px;
+    }
+    .gdd-row mat-form-field {
+      flex: 1;
+    }
   `,
 })
 export class SettingsComponent implements OnInit {
@@ -178,11 +209,20 @@ export class SettingsComponent implements OnInit {
   protected readonly themeOptions = THEME_OPTIONS;
   protected readonly saving = signal(false);
 
+  protected readonly months = [
+    { value: 1, label: 'January' }, { value: 2, label: 'February' }, { value: 3, label: 'March' },
+    { value: 4, label: 'April' }, { value: 5, label: 'May' }, { value: 6, label: 'June' },
+    { value: 7, label: 'July' }, { value: 8, label: 'August' }, { value: 9, label: 'September' },
+    { value: 10, label: 'October' }, { value: 11, label: 'November' }, { value: 12, label: 'December' },
+  ];
+
   protected readonly profileForm = this.fb.nonNullable.group({
     displayName: [''],
     zipCode: [''],
     gddBase: [50],
     tempOffset: [0],
+    gddStartMonth: [1],
+    gddStartDay: [1],
   });
 
   protected readonly notifForm = this.fb.nonNullable.group({
@@ -205,6 +245,8 @@ export class SettingsComponent implements OnInit {
         zipCode: user.zipCode ?? '',
         gddBase: user.gddBase ?? 50,
         tempOffset: user.tempOffset ?? 0,
+        gddStartMonth: user.gddStartMonth ?? 1,
+        gddStartDay: user.gddStartDay ?? 1,
       });
       this.notifForm.patchValue({
         discordWebhookUrl: user.discordWebhookUrl ?? '',

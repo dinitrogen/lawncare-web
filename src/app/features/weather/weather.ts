@@ -2,202 +2,306 @@ import { ChangeDetectionStrategy, Component, inject, OnInit, signal, computed } 
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
-import { DecimalPipe } from '@angular/common';
+import { MatTabsModule } from '@angular/material/tabs';
+import { MatTableModule } from '@angular/material/table';
+import { MatSortModule, Sort } from '@angular/material/sort';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatButtonModule } from '@angular/material/button';
+import { MatNativeDateModule } from '@angular/material/core';
+import { DecimalPipe, DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { WeatherService } from '../../core/services/weather.service';
 import { WeatherReading } from '../../core/models/weather.model';
+
+interface DailySummary {
+  date: string;
+  highF: number;
+  lowF: number;
+  avgHumidity: number;
+  avgSoilMoisture: number | null;
+  dailyGdd: number;
+  cumulativeGdd: number;
+}
 
 @Component({
   selector: 'app-weather',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatCardModule, MatIconModule, MatDividerModule, DecimalPipe],
+  imports: [
+    MatCardModule, MatIconModule, MatDividerModule, MatTabsModule,
+    MatTableModule, MatSortModule, MatFormFieldModule, MatInputModule,
+    MatDatepickerModule, MatButtonModule, MatNativeDateModule,
+    DecimalPipe, DatePipe, FormsModule,
+  ],
   template: `
     <div class="content-container">
       <h1 class="page-title">Weather Station</h1>
 
-      @if (weather(); as w) {
-        <div class="card-grid">
-          <!-- Outdoor -->
-          <mat-card>
-            <mat-card-header>
-              <mat-icon mat-card-avatar>wb_sunny</mat-icon>
-              <mat-card-title>Outdoor</mat-card-title>
-              <mat-card-subtitle>Updated {{ formatTimestamp(w.timestamp) }}</mat-card-subtitle>
-            </mat-card-header>
-            <mat-card-content>
-              <div class="reading-grid">
-                <div class="reading">
-                  <span class="reading-value large">{{ cToF(w.outdoorTempC) }}&deg;F</span>
-                  <span class="reading-label">Temperature</span>
-                </div>
-                @if (w.feelsLikeC !== null && w.feelsLikeC !== w.outdoorTempC) {
-                  <div class="reading">
-                    <span class="reading-value">{{ cToF(w.feelsLikeC) }}&deg;F</span>
-                    <span class="reading-label">Feels Like</span>
-                  </div>
-                }
-                @if (w.outdoorHumidityPct !== null) {
-                  <div class="reading">
-                    <span class="reading-value">{{ w.outdoorHumidityPct }}%</span>
-                    <span class="reading-label">Humidity</span>
-                  </div>
-                }
-                @if (w.uvIndex !== null) {
-                  <div class="reading">
-                    <span class="reading-value">{{ w.uvIndex }}</span>
-                    <span class="reading-label">UV Index</span>
-                  </div>
-                }
-                @if (w.solarRadiationWm2 !== null) {
-                  <div class="reading">
-                    <span class="reading-value">{{ w.solarRadiationWm2 | number:'1.0-0' }}</span>
-                    <span class="reading-label">Solar (W/m&sup2;)</span>
-                  </div>
-                }
-              </div>
-            </mat-card-content>
-          </mat-card>
-
-          <!-- Wind -->
-          <mat-card>
-            <mat-card-header>
-              <mat-icon mat-card-avatar>air</mat-icon>
-              <mat-card-title>Wind</mat-card-title>
-            </mat-card-header>
-            <mat-card-content>
-              <div class="reading-grid">
-                <div class="reading">
-                  <span class="reading-value large">{{ kmhToMph(w.windSpeedKmh) }} mph</span>
-                  <span class="reading-label">Speed</span>
-                </div>
-                @if (w.windGustKmh !== null) {
-                  <div class="reading">
-                    <span class="reading-value">{{ kmhToMph(w.windGustKmh) }} mph</span>
-                    <span class="reading-label">Gust</span>
-                  </div>
-                }
-                @if (w.windDirectionDeg !== null) {
-                  <div class="reading">
-                    <span class="reading-value">{{ windDirection(w.windDirectionDeg) }}</span>
-                    <span class="reading-label">Direction</span>
-                  </div>
-                }
-              </div>
-            </mat-card-content>
-          </mat-card>
-
-          <!-- Rain -->
-          <mat-card>
-            <mat-card-header>
-              <mat-icon mat-card-avatar>water_drop</mat-icon>
-              <mat-card-title>Rain</mat-card-title>
-            </mat-card-header>
-            <mat-card-content>
-              <div class="reading-grid">
-                @if (w.rainRateMmh !== null) {
-                  <div class="reading">
-                    <span class="reading-value large">{{ mmToIn(w.rainRateMmh) }} in/hr</span>
-                    <span class="reading-label">Rain Rate</span>
-                  </div>
-                }
-                @if (w.dailyRainMm !== null) {
-                  <div class="reading">
-                    <span class="reading-value">{{ mmToIn(w.dailyRainMm) }} in</span>
-                    <span class="reading-label">Today</span>
-                  </div>
-                }
-                @if (w.weeklyRainMm !== null) {
-                  <div class="reading">
-                    <span class="reading-value">{{ mmToIn(w.weeklyRainMm) }} in</span>
-                    <span class="reading-label">This Week</span>
-                  </div>
-                }
-                @if (w.monthlyRainMm !== null) {
-                  <div class="reading">
-                    <span class="reading-value">{{ mmToIn(w.monthlyRainMm) }} in</span>
-                    <span class="reading-label">This Month</span>
-                  </div>
-                }
-              </div>
-            </mat-card-content>
-          </mat-card>
-
-          <!-- Soil Moisture -->
-          @if (w.soilMoisturePct?.length) {
-            <mat-card>
-              <mat-card-header>
-                <mat-icon mat-card-avatar>opacity</mat-icon>
-                <mat-card-title>Soil Moisture</mat-card-title>
-              </mat-card-header>
-              <mat-card-content>
-                <div class="reading-grid">
-                  @for (pct of w.soilMoisturePct; track $index) {
+      <mat-tab-group>
+        <!-- Current Tab -->
+        <mat-tab label="Current">
+          @if (weather(); as w) {
+            <p class="last-updated">Last reading: {{ w.timestamp | date:'medium' }}</p>
+            <div class="card-grid">
+              <!-- Outdoor -->
+              <mat-card>
+                <mat-card-header>
+                  <mat-icon mat-card-avatar>wb_sunny</mat-icon>
+                  <mat-card-title>Outdoor</mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <div class="reading-grid">
                     <div class="reading">
-                      <span class="reading-value large">{{ pct }}%</span>
-                      <span class="reading-label">Channel {{ $index + 1 }}</span>
+                      <span class="reading-value large">{{ cToF(w.outdoorTempC) }}&deg;F</span>
+                      <span class="reading-label">Temperature</span>
                     </div>
-                  }
-                </div>
+                    @if (w.feelsLikeC !== null && w.feelsLikeC !== w.outdoorTempC) {
+                      <div class="reading">
+                        <span class="reading-value">{{ cToF(w.feelsLikeC) }}&deg;F</span>
+                        <span class="reading-label">Feels Like</span>
+                      </div>
+                    }
+                    @if (w.outdoorHumidityPct !== null) {
+                      <div class="reading">
+                        <span class="reading-value">{{ w.outdoorHumidityPct }}%</span>
+                        <span class="reading-label">Humidity</span>
+                      </div>
+                    }
+                    @if (w.uvIndex !== null) {
+                      <div class="reading">
+                        <span class="reading-value">{{ w.uvIndex }}</span>
+                        <span class="reading-label">UV Index</span>
+                      </div>
+                    }
+                    @if (w.solarRadiationWm2 !== null) {
+                      <div class="reading">
+                        <span class="reading-value">{{ w.solarRadiationWm2 | number:'1.0-0' }}</span>
+                        <span class="reading-label">Solar (W/m&sup2;)</span>
+                      </div>
+                    }
+                  </div>
+                </mat-card-content>
+              </mat-card>
+
+              <!-- Wind -->
+              <mat-card>
+                <mat-card-header>
+                  <mat-icon mat-card-avatar>air</mat-icon>
+                  <mat-card-title>Wind</mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <div class="reading-grid">
+                    <div class="reading">
+                      <span class="reading-value large">{{ kmhToMph(w.windSpeedKmh) }} mph</span>
+                      <span class="reading-label">Speed</span>
+                    </div>
+                    @if (w.windGustKmh !== null) {
+                      <div class="reading">
+                        <span class="reading-value">{{ kmhToMph(w.windGustKmh) }} mph</span>
+                        <span class="reading-label">Gust</span>
+                      </div>
+                    }
+                    @if (w.windDirectionDeg !== null) {
+                      <div class="reading">
+                        <span class="reading-value">{{ windDirection(w.windDirectionDeg) }}</span>
+                        <span class="reading-label">Direction</span>
+                      </div>
+                    }
+                  </div>
+                </mat-card-content>
+              </mat-card>
+
+              <!-- Rain -->
+              <mat-card>
+                <mat-card-header>
+                  <mat-icon mat-card-avatar>water_drop</mat-icon>
+                  <mat-card-title>Rain</mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <div class="reading-grid">
+                    @if (w.rainRateMmh !== null) {
+                      <div class="reading">
+                        <span class="reading-value large">{{ mmToIn(w.rainRateMmh) }} in/hr</span>
+                        <span class="reading-label">Rain Rate</span>
+                      </div>
+                    }
+                    @if (w.dailyRainMm !== null) {
+                      <div class="reading">
+                        <span class="reading-value">{{ mmToIn(w.dailyRainMm) }} in</span>
+                        <span class="reading-label">Today</span>
+                      </div>
+                    }
+                    @if (w.weeklyRainMm !== null) {
+                      <div class="reading">
+                        <span class="reading-value">{{ mmToIn(w.weeklyRainMm) }} in</span>
+                        <span class="reading-label">This Week</span>
+                      </div>
+                    }
+                    @if (w.monthlyRainMm !== null) {
+                      <div class="reading">
+                        <span class="reading-value">{{ mmToIn(w.monthlyRainMm) }} in</span>
+                        <span class="reading-label">This Month</span>
+                      </div>
+                    }
+                  </div>
+                </mat-card-content>
+              </mat-card>
+
+              <!-- Soil Moisture -->
+              @if (w.soilMoisturePct?.length) {
+                <mat-card>
+                  <mat-card-header>
+                    <mat-icon mat-card-avatar>opacity</mat-icon>
+                    <mat-card-title>Soil Moisture</mat-card-title>
+                  </mat-card-header>
+                  <mat-card-content>
+                    <div class="reading-grid">
+                      @for (pct of w.soilMoisturePct; track $index) {
+                        <div class="reading">
+                          <span class="reading-value large">{{ pct }}%</span>
+                          <span class="reading-label">Channel {{ $index + 1 }}</span>
+                        </div>
+                      }
+                    </div>
+                  </mat-card-content>
+                </mat-card>
+              }
+
+              <!-- Pressure -->
+              <mat-card>
+                <mat-card-header>
+                  <mat-icon mat-card-avatar>speed</mat-icon>
+                  <mat-card-title>Pressure</mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <div class="reading-grid">
+                    @if (w.pressureRelHpa !== null) {
+                      <div class="reading">
+                        <span class="reading-value large">{{ hpaToInHg(w.pressureRelHpa) }} inHg</span>
+                        <span class="reading-label">Relative</span>
+                      </div>
+                    }
+                    @if (w.pressureAbsHpa !== null) {
+                      <div class="reading">
+                        <span class="reading-value">{{ hpaToInHg(w.pressureAbsHpa) }} inHg</span>
+                        <span class="reading-label">Absolute</span>
+                      </div>
+                    }
+                  </div>
+                </mat-card-content>
+              </mat-card>
+
+              <!-- Indoor -->
+              <mat-card>
+                <mat-card-header>
+                  <mat-icon mat-card-avatar>home</mat-icon>
+                  <mat-card-title>Indoor</mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <div class="reading-grid">
+                    @if (w.indoorTempC !== null) {
+                      <div class="reading">
+                        <span class="reading-value large">{{ cToF(w.indoorTempC) }}&deg;F</span>
+                        <span class="reading-label">Temperature</span>
+                      </div>
+                    }
+                    @if (w.indoorHumidityPct !== null) {
+                      <div class="reading">
+                        <span class="reading-value">{{ w.indoorHumidityPct }}%</span>
+                        <span class="reading-label">Humidity</span>
+                      </div>
+                    }
+                  </div>
+                </mat-card-content>
+              </mat-card>
+            </div>
+          } @else if (error()) {
+            <mat-card>
+              <mat-card-content>
+                <p>No weather station data available. Make sure your Ecowitt gateway is configured and uploading data.</p>
               </mat-card-content>
             </mat-card>
+          } @else {
+            <p>Loading weather data…</p>
           }
+        </mat-tab>
 
-          <!-- Pressure -->
-          <mat-card>
-            <mat-card-header>
-              <mat-icon mat-card-avatar>speed</mat-icon>
-              <mat-card-title>Pressure</mat-card-title>
-            </mat-card-header>
-            <mat-card-content>
-              <div class="reading-grid">
-                @if (w.pressureRelHpa !== null) {
-                  <div class="reading">
-                    <span class="reading-value large">{{ hpaToInHg(w.pressureRelHpa) }} inHg</span>
-                    <span class="reading-label">Relative</span>
-                  </div>
-                }
-                @if (w.pressureAbsHpa !== null) {
-                  <div class="reading">
-                    <span class="reading-value">{{ hpaToInHg(w.pressureAbsHpa) }} inHg</span>
-                    <span class="reading-label">Absolute</span>
-                  </div>
-                }
-              </div>
-            </mat-card-content>
-          </mat-card>
+        <!-- History Tab -->
+        <mat-tab label="History">
+          <div class="history-controls">
+            <mat-form-field appearance="outline">
+              <mat-label>From</mat-label>
+              <input matInput [matDatepicker]="fromPicker" [(ngModel)]="historyFrom">
+              <mat-datepicker-toggle matIconSuffix [for]="fromPicker"></mat-datepicker-toggle>
+              <mat-datepicker #fromPicker></mat-datepicker>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>To</mat-label>
+              <input matInput [matDatepicker]="toPicker" [(ngModel)]="historyTo">
+              <mat-datepicker-toggle matIconSuffix [for]="toPicker"></mat-datepicker-toggle>
+              <mat-datepicker #toPicker></mat-datepicker>
+            </mat-form-field>
+            <mat-form-field appearance="outline" class="gdd-base-field">
+              <mat-label>GDD Base (°F)</mat-label>
+              <input matInput type="number" [(ngModel)]="gddBase">
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>GDD Start Date</mat-label>
+              <input matInput [matDatepicker]="gddStartPicker" [(ngModel)]="gddStartDate">
+              <mat-datepicker-toggle matIconSuffix [for]="gddStartPicker"></mat-datepicker-toggle>
+              <mat-datepicker #gddStartPicker></mat-datepicker>
+            </mat-form-field>
+            <button mat-flat-button (click)="loadHistory()">
+              <mat-icon>search</mat-icon> Load
+            </button>
+          </div>
 
-          <!-- Indoor -->
-          <mat-card>
-            <mat-card-header>
-              <mat-icon mat-card-avatar>home</mat-icon>
-              <mat-card-title>Indoor</mat-card-title>
-            </mat-card-header>
-            <mat-card-content>
-              <div class="reading-grid">
-                @if (w.indoorTempC !== null) {
-                  <div class="reading">
-                    <span class="reading-value large">{{ cToF(w.indoorTempC) }}&deg;F</span>
-                    <span class="reading-label">Temperature</span>
-                  </div>
-                }
-                @if (w.indoorHumidityPct !== null) {
-                  <div class="reading">
-                    <span class="reading-value">{{ w.indoorHumidityPct }}%</span>
-                    <span class="reading-label">Humidity</span>
-                  </div>
-                }
-              </div>
-            </mat-card-content>
-          </mat-card>
-        </div>
-      } @else if (error()) {
-        <mat-card>
-          <mat-card-content>
-            <p>No weather station data available. Make sure your Ecowitt gateway is configured and uploading data.</p>
-          </mat-card-content>
-        </mat-card>
-      } @else {
-        <p>Loading weather data…</p>
-      }
+          @if (historyLoading()) {
+            <p>Loading history…</p>
+          } @else if (dailySummaries().length) {
+            <div class="table-container">
+              <table mat-table [dataSource]="sortedSummaries()" matSort
+                     (matSortChange)="onSortChange($event)">
+                <ng-container matColumnDef="date">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Date</th>
+                  <td mat-cell *matCellDef="let row">{{ row.date }}</td>
+                </ng-container>
+                <ng-container matColumnDef="highF">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>High (°F)</th>
+                  <td mat-cell *matCellDef="let row">{{ row.highF | number:'1.0-0' }}</td>
+                </ng-container>
+                <ng-container matColumnDef="lowF">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Low (°F)</th>
+                  <td mat-cell *matCellDef="let row">{{ row.lowF | number:'1.0-0' }}</td>
+                </ng-container>
+                <ng-container matColumnDef="avgHumidity">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Humidity (%)</th>
+                  <td mat-cell *matCellDef="let row">{{ row.avgHumidity | number:'1.0-0' }}</td>
+                </ng-container>
+                <ng-container matColumnDef="avgSoilMoisture">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Soil (%)</th>
+                  <td mat-cell *matCellDef="let row">
+                    {{ row.avgSoilMoisture !== null ? (row.avgSoilMoisture | number:'1.0-0') : '--' }}
+                  </td>
+                </ng-container>
+                <ng-container matColumnDef="dailyGdd">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Daily GDD</th>
+                  <td mat-cell *matCellDef="let row">{{ row.dailyGdd | number:'1.1-1' }}</td>
+                </ng-container>
+                <ng-container matColumnDef="cumulativeGdd">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Cumulative GDD</th>
+                  <td mat-cell *matCellDef="let row">{{ row.cumulativeGdd | number:'1.0-0' }}</td>
+                </ng-container>
+                <tr mat-header-row *matHeaderRowDef="historyColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: historyColumns;"></tr>
+              </table>
+            </div>
+          } @else {
+            <p class="empty-hint">Select a date range and click Load to view weather history.</p>
+          }
+        </mat-tab>
+      </mat-tab-group>
     </div>
   `,
   styles: `
@@ -232,6 +336,32 @@ import { WeatherReading } from '../../core/models/weather.model';
       opacity: 0.7;
       margin-top: 4px;
     }
+    .last-updated {
+      padding: 16px 0 8px;
+      font-size: 14px;
+      opacity: 0.7;
+    }
+    .history-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      padding: 16px 0;
+    }
+    .gdd-base-field {
+      max-width: 120px;
+    }
+    .table-container {
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+    }
+    .empty-hint {
+      padding: 32px 0;
+      text-align: center;
+      opacity: 0.7;
+    }
   `,
 })
 export class WeatherComponent implements OnInit {
@@ -240,10 +370,85 @@ export class WeatherComponent implements OnInit {
   protected readonly weather = signal<WeatherReading | null>(null);
   protected readonly error = signal(false);
 
+  // History tab state
+  protected historyFrom = new Date(new Date().getFullYear(), 0, 1);
+  protected historyTo = new Date();
+  protected gddBase = 50;
+  protected gddStartDate = new Date(new Date().getFullYear(), 1, 15);
+  protected readonly historyLoading = signal(false);
+  protected readonly dailySummaries = signal<DailySummary[]>([]);
+  protected readonly sortDirection = signal<'asc' | 'desc'>('desc');
+  protected readonly sortActive = signal('date');
+  protected readonly historyColumns = ['date', 'highF', 'lowF', 'avgHumidity', 'avgSoilMoisture', 'dailyGdd', 'cumulativeGdd'];
+
+  protected readonly sortedSummaries = computed(() => {
+    const data = [...this.dailySummaries()];
+    const dir = this.sortDirection();
+    const col = this.sortActive() as keyof DailySummary;
+    data.sort((a, b) => {
+      const aVal = a[col] ?? 0;
+      const bVal = b[col] ?? 0;
+      return dir === 'asc'
+        ? (aVal < bVal ? -1 : aVal > bVal ? 1 : 0)
+        : (aVal > bVal ? -1 : aVal < bVal ? 1 : 0);
+    });
+    return data;
+  });
+
   ngOnInit(): void {
     this.weatherService.getCurrent().subscribe({
       next: (w) => this.weather.set(w),
       error: () => this.error.set(true),
+    });
+  }
+
+  protected loadHistory(): void {
+    this.historyLoading.set(true);
+    const from = this.historyFrom.toISOString();
+    const to = new Date(this.historyTo.getTime() + 86400000).toISOString(); // include full day
+    this.weatherService.getHistory(from, to, 500).subscribe({
+      next: (readings) => {
+        this.dailySummaries.set(this.aggregateDaily(readings));
+        this.historyLoading.set(false);
+      },
+      error: () => this.historyLoading.set(false),
+    });
+  }
+
+  protected onSortChange(sort: Sort): void {
+    this.sortActive.set(sort.active || 'date');
+    this.sortDirection.set((sort.direction || 'desc') as 'asc' | 'desc');
+  }
+
+  private aggregateDaily(readings: WeatherReading[]): DailySummary[] {
+    const byDate = new Map<string, WeatherReading[]>();
+    for (const r of readings) {
+      const date = r.timestamp.split('T')[0];
+      const arr = byDate.get(date) ?? [];
+      arr.push(r);
+      byDate.set(date, arr);
+    }
+
+    const gddStartStr = this.gddStartDate.toISOString().split('T')[0];
+    const sorted = [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    let cumGdd = 0;
+
+    return sorted.map(([date, recs]) => {
+      const temps = recs.filter(r => r.outdoorTempC !== null).map(r => r.outdoorTempC! * 9 / 5 + 32);
+      const highF = temps.length ? Math.max(...temps) : 0;
+      const lowF = temps.length ? Math.min(...temps) : 0;
+
+      const humidities = recs.filter(r => r.outdoorHumidityPct !== null).map(r => r.outdoorHumidityPct!);
+      const avgHumidity = humidities.length ? humidities.reduce((a, b) => a + b, 0) / humidities.length : 0;
+
+      const soils = recs.flatMap(r => r.soilMoisturePct ?? []);
+      const avgSoilMoisture = soils.length ? soils.reduce((a, b) => a + b, 0) / soils.length : null;
+
+      const avgTemp = (highF + lowF) / 2;
+      const dailyGdd = date >= gddStartStr ? Math.max(0, avgTemp - this.gddBase) : 0;
+      cumGdd += dailyGdd;
+
+      return { date, highF, lowF, avgHumidity, avgSoilMoisture, dailyGdd, cumulativeGdd: cumGdd };
     });
   }
 
