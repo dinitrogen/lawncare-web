@@ -6,6 +6,11 @@ import { MatTableModule } from '@angular/material/table';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatExpansionModule } from '@angular/material/expansion';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { FormsModule } from '@angular/forms';
 import { DecimalPipe } from '@angular/common';
 import { AuthService } from '../../core/services/auth.service';
 import { GddService } from '../../core/services/gdd.service';
@@ -22,11 +27,58 @@ import { DailyGddEntry, BUILT_IN_THRESHOLDS, GddThreshold } from '../../core/mod
     MatChipsModule,
     MatProgressSpinnerModule,
     MatExpansionModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatSelectModule,
+    MatSnackBarModule,
+    FormsModule,
     DecimalPipe,
   ],
   template: `
     <div class="content-container">
       <h1 class="page-title">GDD Tracker</h1>
+
+      <!-- Settings Panel -->
+      <mat-expansion-panel class="settings-panel">
+        <mat-expansion-panel-header>
+          <mat-panel-title>
+            <mat-icon>settings</mat-icon> GDD Settings
+          </mat-panel-title>
+          <mat-panel-description>
+            Source: {{ gddSource === 'ecowitt' ? 'Local Station' : 'Open-Meteo' }} · Base: {{ gddBaseTemp }}°F
+          </mat-panel-description>
+        </mat-expansion-panel-header>
+        <div class="settings-grid">
+          <mat-form-field appearance="outline">
+            <mat-label>Data Source</mat-label>
+            <mat-select [(ngModel)]="gddSource">
+              <mat-option value="meteo">Open-Meteo (public API)</mat-option>
+              <mat-option value="ecowitt">Local Weather Station (Ecowitt)</mat-option>
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Base Temperature (°F)</mat-label>
+            <input matInput type="number" [(ngModel)]="gddBaseTemp">
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Start Month</mat-label>
+            <mat-select [(ngModel)]="gddStartMonth">
+              @for (m of months; track m.value) {
+                <mat-option [value]="m.value">{{ m.label }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field appearance="outline">
+            <mat-label>Start Day</mat-label>
+            <input matInput type="number" [(ngModel)]="gddStartDay" min="1" max="31">
+          </mat-form-field>
+        </div>
+        <div class="settings-actions">
+          <button mat-flat-button (click)="saveSettings()">
+            <mat-icon>save</mat-icon> Save &amp; Refresh
+          </button>
+        </div>
+      </mat-expansion-panel>
 
       @if (loading()) {
         <div class="loading-center">
@@ -211,11 +263,27 @@ import { DailyGddEntry, BUILT_IN_THRESHOLDS, GddThreshold } from '../../core/mod
       height: 48px;
       margin-bottom: 16px;
     }
+    .settings-panel {
+      margin-bottom: 16px;
+    }
+    .settings-panel mat-panel-title mat-icon {
+      margin-right: 8px;
+    }
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      padding: 8px 0;
+    }
+    .settings-actions {
+      padding: 8px 0 0;
+    }
   `,
 })
 export class GddTrackerComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly gddService = inject(GddService);
+  private readonly snackBar = inject(MatSnackBar);
 
   protected readonly thresholds = BUILT_IN_THRESHOLDS;
   protected readonly dailyColumns = ['date', 'high', 'low', 'dailyGdd', 'cumulativeGdd'];
@@ -223,6 +291,19 @@ export class GddTrackerComponent implements OnInit {
   protected readonly loading = signal(false);
   protected readonly gddData = signal<DailyGddEntry[]>([]);
   protected readonly hasZip = signal(false);
+
+  // Settings fields (bound to form, saved on demand)
+  protected gddSource = 'meteo';
+  protected gddBaseTemp = 50;
+  protected gddStartMonth = 1;
+  protected gddStartDay = 1;
+
+  protected readonly months = [
+    { value: 1, label: 'January' }, { value: 2, label: 'February' }, { value: 3, label: 'March' },
+    { value: 4, label: 'April' }, { value: 5, label: 'May' }, { value: 6, label: 'June' },
+    { value: 7, label: 'July' }, { value: 8, label: 'August' }, { value: 9, label: 'September' },
+    { value: 10, label: 'October' }, { value: 11, label: 'November' }, { value: 12, label: 'December' },
+  ];
 
   protected readonly latestCumulative = computed(() => {
     const data = this.gddData();
@@ -243,6 +324,13 @@ export class GddTrackerComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    const user = this.authService.user();
+    if (user) {
+      this.gddSource = user.gddSource ?? 'meteo';
+      this.gddBaseTemp = user.gddBase ?? 50;
+      this.gddStartMonth = user.gddStartMonth ?? 1;
+      this.gddStartDay = user.gddStartDay ?? 1;
+    }
     this.loadData();
   }
 
@@ -253,6 +341,21 @@ export class GddTrackerComponent implements OnInit {
 
   protected isPassed(t: GddThreshold): boolean {
     return this.latestCumulative() > t.gddMax;
+  }
+
+  protected async saveSettings(): Promise<void> {
+    try {
+      await this.authService.updateProfile({
+        gddBase: this.gddBaseTemp,
+        gddStartMonth: this.gddStartMonth,
+        gddStartDay: this.gddStartDay,
+        gddSource: this.gddSource as 'meteo' | 'ecowitt',
+      });
+      this.snackBar.open('GDD settings saved', 'OK', { duration: 3000 });
+      this.loadData();
+    } catch {
+      this.snackBar.open('Failed to save settings', 'OK', { duration: 3000 });
+    }
   }
 
   protected refresh(): void {

@@ -28,6 +28,13 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'weather/day/:date',
+        loadComponent: () =>
+          import('./features/weather/weather-day').then(
+            (m) => m.WeatherDayComponent
+          ),
+      },
+      {
         path: 'yard',
         loadComponent: () =>
           import('./features/yard/my-yard').then((m) => m.MyYardComponent),

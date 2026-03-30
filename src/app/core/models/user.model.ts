@@ -14,6 +14,7 @@ export interface AppUser {
   gddBase: number;
   gddStartMonth: number;
   gddStartDay: number;
+  gddSource: 'meteo' | 'ecowitt';
   tempOffset: number;
   discordWebhookUrl?: string;
   notificationPrefs: NotificationPrefs;
@@ -29,6 +30,7 @@ export function createDefaultUser(uid: string, email: string): AppUser {
     gddBase: 50,
     gddStartMonth: 1,
     gddStartDay: 1,
+    gddSource: 'meteo',
     tempOffset: 0,
     notificationPrefs: {
       treatmentReminders: true,

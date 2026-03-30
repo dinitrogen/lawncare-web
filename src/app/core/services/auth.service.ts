@@ -99,6 +99,7 @@ export class AuthService {
         gddBase: (data['gddBase'] as number) ?? 50,
         gddStartMonth: (data['gddStartMonth'] as number) ?? 2,
         gddStartDay: (data['gddStartDay'] as number) ?? 15,
+        gddSource: (data['gddSource'] as AppUser['gddSource']) ?? 'meteo',
         tempOffset: (data['tempOffset'] as number) ?? 0,
         discordWebhookUrl: data['discordWebhookUrl'] as string | undefined,
         notificationPrefs: (data['notificationPrefs'] as AppUser['notificationPrefs']) ?? {

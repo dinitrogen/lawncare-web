@@ -12,8 +12,10 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatNativeDateModule } from '@angular/material/core';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { WeatherService } from '../../core/services/weather.service';
 import { WeatherReading } from '../../core/models/weather.model';
+import { LineChartComponent, ChartSeries } from '../../shared/line-chart';
 
 interface DailySummary {
   date: string;
@@ -32,7 +34,7 @@ interface DailySummary {
     MatCardModule, MatIconModule, MatDividerModule, MatTabsModule,
     MatTableModule, MatSortModule, MatFormFieldModule, MatInputModule,
     MatDatepickerModule, MatButtonModule, MatNativeDateModule,
-    DecimalPipe, DatePipe, FormsModule,
+    DecimalPipe, DatePipe, FormsModule, RouterLink, LineChartComponent,
   ],
   template: `
     <div class="content-container">
@@ -265,7 +267,9 @@ interface DailySummary {
                      (matSortChange)="onSortChange($event)">
                 <ng-container matColumnDef="date">
                   <th mat-header-cell *matHeaderCellDef mat-sort-header>Date</th>
-                  <td mat-cell *matCellDef="let row">{{ row.date }}</td>
+                  <td mat-cell *matCellDef="let row">
+                    <a [routerLink]="['/weather/day', row.date]" class="date-link">{{ row.date }}</a>
+                  </td>
                 </ng-container>
                 <ng-container matColumnDef="highF">
                   <th mat-header-cell *matHeaderCellDef mat-sort-header>High (°F)</th>
@@ -299,6 +303,72 @@ interface DailySummary {
             </div>
           } @else {
             <p class="empty-hint">Select a date range and click Load to view weather history.</p>
+          }
+        </mat-tab>
+
+        <!-- Day Detail Tab -->
+        <mat-tab label="Day Detail">
+          <div class="history-controls">
+            <mat-form-field appearance="outline">
+              <mat-label>Select Date</mat-label>
+              <input matInput [matDatepicker]="detailPicker" [(ngModel)]="detailDate">
+              <mat-datepicker-toggle matIconSuffix [for]="detailPicker"></mat-datepicker-toggle>
+              <mat-datepicker #detailPicker></mat-datepicker>
+            </mat-form-field>
+            <button mat-flat-button (click)="loadDayDetail()">
+              <mat-icon>search</mat-icon> View Day
+            </button>
+          </div>
+
+          @if (dayDetailLoading()) {
+            <p>Loading day data…</p>
+          } @else if (dayReadings().length) {
+            <mat-card>
+              <mat-card-header>
+                <mat-icon mat-card-avatar>thermostat</mat-icon>
+                <mat-card-title>Temperature</mat-card-title>
+                <mat-card-subtitle>
+                  High: {{ dayHighF() | number:'1.0-0' }}°F · Low: {{ dayLowF() | number:'1.0-0' }}°F
+                </mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <app-line-chart [series]="dayTempSeries()" />
+              </mat-card-content>
+            </mat-card>
+
+            <mat-card>
+              <mat-card-header>
+                <mat-icon mat-card-avatar>water_drop</mat-icon>
+                <mat-card-title>Humidity</mat-card-title>
+              </mat-card-header>
+              <mat-card-content>
+                <app-line-chart [series]="dayHumiditySeries()" />
+              </mat-card-content>
+            </mat-card>
+
+            @if (daySoilData()) {
+              <mat-card>
+                <mat-card-header>
+                  <mat-icon mat-card-avatar>opacity</mat-icon>
+                  <mat-card-title>Soil Moisture</mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <app-line-chart [series]="daySoilSeries()" />
+                </mat-card-content>
+              </mat-card>
+            }
+
+            <mat-card>
+              <mat-card-header>
+                <mat-icon mat-card-avatar>air</mat-icon>
+                <mat-card-title>Wind</mat-card-title>
+              </mat-card-header>
+              <mat-card-content>
+                <app-line-chart [series]="dayWindSeries()" />
+              </mat-card-content>
+            </mat-card>
+          } @else {
+            <p class="empty-hint">Select a date and click View Day to see detailed hourly data.</p>
           }
         </mat-tab>
       </mat-tab-group>
@@ -362,6 +432,16 @@ interface DailySummary {
       text-align: center;
       opacity: 0.7;
     }
+    .date-link {
+      color: var(--primary-color);
+      text-decoration: none;
+    }
+    .date-link:hover {
+      text-decoration: underline;
+    }
+    mat-card {
+      margin-bottom: 16px;
+    }
   `,
 })
 export class WeatherComponent implements OnInit {
@@ -380,6 +460,71 @@ export class WeatherComponent implements OnInit {
   protected readonly sortDirection = signal<'asc' | 'desc'>('desc');
   protected readonly sortActive = signal('date');
   protected readonly historyColumns = ['date', 'highF', 'lowF', 'avgHumidity', 'avgSoilMoisture', 'dailyGdd', 'cumulativeGdd'];
+
+  // Day Detail tab state
+  protected detailDate = new Date();
+  protected readonly dayDetailLoading = signal(false);
+  protected readonly dayReadings = signal<WeatherReading[]>([]);
+
+  private readonly sortedDayReadings = computed(() =>
+    [...this.dayReadings()].sort((a, b) => a.timestamp.localeCompare(b.timestamp)));
+
+  protected readonly dayHighF = computed(() => {
+    const temps = this.dayReadings().filter(r => r.outdoorTempC !== null).map(r => r.outdoorTempC! * 9 / 5 + 32);
+    return temps.length ? Math.max(...temps) : 0;
+  });
+
+  protected readonly dayLowF = computed(() => {
+    const temps = this.dayReadings().filter(r => r.outdoorTempC !== null).map(r => r.outdoorTempC! * 9 / 5 + 32);
+    return temps.length ? Math.min(...temps) : 0;
+  });
+
+  protected readonly dayTempSeries = computed<ChartSeries[]>(() => [{
+    label: 'Temperature', unit: '°F', color: '#e53935',
+    data: this.sortedDayReadings().filter(r => r.outdoorTempC !== null)
+      .map(r => ({ time: r.timestamp, value: r.outdoorTempC! * 9 / 5 + 32 })),
+  }]);
+
+  protected readonly dayHumiditySeries = computed<ChartSeries[]>(() => [{
+    label: 'Humidity', unit: '%', color: '#1e88e5',
+    data: this.sortedDayReadings().filter(r => r.outdoorHumidityPct !== null)
+      .map(r => ({ time: r.timestamp, value: r.outdoorHumidityPct! })),
+  }]);
+
+  protected readonly daySoilData = computed(() =>
+    this.dayReadings().some(r => r.soilMoisturePct?.length));
+
+  protected readonly daySoilSeries = computed<ChartSeries[]>(() => {
+    const recs = this.sortedDayReadings();
+    const colors = ['#43a047', '#fb8c00', '#8e24aa', '#00acc1'];
+    const maxCh = Math.max(...recs.map(r => r.soilMoisturePct?.length ?? 0), 0);
+    const result: ChartSeries[] = [];
+    for (let ch = 0; ch < maxCh; ch++) {
+      result.push({
+        label: `Ch ${ch + 1}`, unit: '%', color: colors[ch % colors.length],
+        data: recs.filter(r => r.soilMoisturePct && r.soilMoisturePct.length > ch)
+          .map(r => ({ time: r.timestamp, value: r.soilMoisturePct![ch] })),
+      });
+    }
+    return result;
+  });
+
+  protected readonly dayWindSeries = computed<ChartSeries[]>(() => {
+    const recs = this.sortedDayReadings();
+    const series: ChartSeries[] = [{
+      label: 'Wind Speed', unit: 'mph', color: '#5e35b1',
+      data: recs.filter(r => r.windSpeedKmh !== null)
+        .map(r => ({ time: r.timestamp, value: r.windSpeedKmh! * 0.621371 })),
+    }];
+    if (recs.some(r => r.windGustKmh !== null)) {
+      series.push({
+        label: 'Gusts', unit: 'mph', color: '#ab47bc',
+        data: recs.filter(r => r.windGustKmh !== null)
+          .map(r => ({ time: r.timestamp, value: r.windGustKmh! * 0.621371 })),
+      });
+    }
+    return series;
+  });
 
   protected readonly sortedSummaries = computed(() => {
     const data = [...this.dailySummaries()];
@@ -418,6 +563,20 @@ export class WeatherComponent implements OnInit {
   protected onSortChange(sort: Sort): void {
     this.sortActive.set(sort.active || 'date');
     this.sortDirection.set((sort.direction || 'desc') as 'asc' | 'desc');
+  }
+
+  protected loadDayDetail(): void {
+    this.dayDetailLoading.set(true);
+    const dateStr = this.detailDate.toISOString().split('T')[0];
+    const from = new Date(`${dateStr}T00:00:00`).toISOString();
+    const to = new Date(`${dateStr}T23:59:59`).toISOString();
+    this.weatherService.getHistory(from, to, 500).subscribe({
+      next: (readings) => {
+        this.dayReadings.set(readings);
+        this.dayDetailLoading.set(false);
+      },
+      error: () => this.dayDetailLoading.set(false),
+    });
   }
 
   private aggregateDaily(readings: WeatherReading[]): DailySummary[] {

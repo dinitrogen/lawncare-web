@@ -20,3 +20,21 @@ export interface WeatherReading {
   stationType: string | null;
   feelsLikeC: number | null;
 }
+
+export interface DailyForecast {
+  date: string;
+  tempMaxF: number;
+  tempMinF: number;
+  weatherCode: number;
+  condition: string;
+  icon: string;
+  precipitationProbabilityPct: number;
+  precipitationMm: number;
+  windMaxKmh: number;
+}
+
+export interface WeatherForecastResponse {
+  today: DailyForecast | null;
+  daily: DailyForecast[];
+  cachedAt: string;
+}
