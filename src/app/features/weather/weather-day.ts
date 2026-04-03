@@ -65,6 +65,19 @@ import { LineChartComponent, ChartSeries } from '../../shared/line-chart';
           </mat-card>
         }
 
+        <!-- Soil Temperature chart (if available) -->
+        @if (hasSoilTempData()) {
+          <mat-card>
+            <mat-card-header>
+              <mat-icon mat-card-avatar>thermostat</mat-icon>
+              <mat-card-title>Soil Temperature</mat-card-title>
+            </mat-card-header>
+            <mat-card-content>
+              <app-line-chart [series]="soilTempSeries()" />
+            </mat-card-content>
+          </mat-card>
+        }
+
         <!-- Wind chart -->
         <mat-card>
           <mat-card-header>
@@ -161,6 +174,9 @@ export class WeatherDayComponent implements OnInit {
   protected readonly hasSoilData = computed(() =>
     this.readings().some(r => r.soilMoisturePct?.length));
 
+  protected readonly hasSoilTempData = computed(() =>
+    this.readings().some(r => r.soilTempC?.length));
+
   protected readonly soilSeries = computed<ChartSeries[]>(() => {
     const recs = this.sortedReadings();
     const colors = ['#43a047', '#fb8c00', '#8e24aa', '#00acc1'];
@@ -175,6 +191,24 @@ export class WeatherDayComponent implements OnInit {
         data: recs
           .filter(r => r.soilMoisturePct && r.soilMoisturePct.length > ch)
           .map(r => ({ time: r.timestamp, value: r.soilMoisturePct![ch] })),
+      });
+    }
+    return series;
+  });
+
+  protected readonly soilTempSeries = computed<ChartSeries[]>(() => {
+    const recs = this.sortedReadings();
+    const colors = ['#e53935', '#fb8c00', '#8e24aa', '#00acc1'];
+    const maxChannels = Math.max(...recs.map(r => r.soilTempC?.length ?? 0), 0);
+    const series: ChartSeries[] = [];
+    for (let ch = 0; ch < maxChannels; ch++) {
+      series.push({
+        label: `Channel ${ch + 1}`,
+        unit: '°F',
+        color: colors[ch % colors.length],
+        data: recs
+          .filter(r => r.soilTempC && r.soilTempC.length > ch)
+          .map(r => ({ time: r.timestamp, value: r.soilTempC![ch] * 9 / 5 + 32 })),
       });
     }
     return series;

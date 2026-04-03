@@ -59,6 +59,9 @@ import { WeatherReading } from '../../core/models/weather.model';
                   @if (w.soilMoisturePct?.length) {
                     <span><mat-icon inline>opacity</mat-icon> Soil {{ w.soilMoisturePct![0] }}%</span>
                   }
+                  @if (w.soilTempC?.length) {
+                    <span><mat-icon inline>thermostat</mat-icon> Soil {{ cToF(w.soilTempC![0]) }}&deg;F</span>
+                  }
                 </div>
               </div>
             } @else if (weatherError()) {

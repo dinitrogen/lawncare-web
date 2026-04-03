@@ -17,6 +17,7 @@ export interface WeatherReading {
   indoorTempC: number | null;
   indoorHumidityPct: number | null;
   soilMoisturePct: number[] | null;
+  soilTempC: number[] | null;
   stationType: string | null;
   feelsLikeC: number | null;
 }

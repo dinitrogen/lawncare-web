@@ -23,6 +23,7 @@ interface DailySummary {
   lowF: number;
   avgHumidity: number;
   avgSoilMoisture: number | null;
+  avgSoilTempF: number | null;
   dailyGdd: number;
   cumulativeGdd: number;
 }
@@ -170,6 +171,26 @@ interface DailySummary {
                 </mat-card>
               }
 
+              <!-- Soil Temperature -->
+              @if (w.soilTempC?.length) {
+                <mat-card>
+                  <mat-card-header>
+                    <mat-icon mat-card-avatar>thermostat</mat-icon>
+                    <mat-card-title>Soil Temperature</mat-card-title>
+                  </mat-card-header>
+                  <mat-card-content>
+                    <div class="reading-grid">
+                      @for (temp of w.soilTempC; track $index) {
+                        <div class="reading">
+                          <span class="reading-value large">{{ cToF(temp) }}&deg;F</span>
+                          <span class="reading-label">Channel {{ $index + 1 }}</span>
+                        </div>
+                      }
+                    </div>
+                  </mat-card-content>
+                </mat-card>
+              }
+
               <!-- Pressure -->
               <mat-card>
                 <mat-card-header>
@@ -289,6 +310,12 @@ interface DailySummary {
                     {{ row.avgSoilMoisture !== null ? (row.avgSoilMoisture | number:'1.0-0') : '--' }}
                   </td>
                 </ng-container>
+                <ng-container matColumnDef="avgSoilTempF">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Soil (°F)</th>
+                  <td mat-cell *matCellDef="let row">
+                    {{ row.avgSoilTempF !== null ? (row.avgSoilTempF | number:'1.0-0') : '--' }}
+                  </td>
+                </ng-container>
                 <ng-container matColumnDef="dailyGdd">
                   <th mat-header-cell *matHeaderCellDef mat-sort-header>Daily GDD</th>
                   <td mat-cell *matCellDef="let row">{{ row.dailyGdd | number:'1.1-1' }}</td>
@@ -354,6 +381,18 @@ interface DailySummary {
                 </mat-card-header>
                 <mat-card-content>
                   <app-line-chart [series]="daySoilSeries()" />
+                </mat-card-content>
+              </mat-card>
+            }
+
+            @if (daySoilTempData()) {
+              <mat-card>
+                <mat-card-header>
+                  <mat-icon mat-card-avatar>thermostat</mat-icon>
+                  <mat-card-title>Soil Temperature</mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <app-line-chart [series]="daySoilTempSeries()" />
                 </mat-card-content>
               </mat-card>
             }
@@ -459,7 +498,7 @@ export class WeatherComponent implements OnInit {
   protected readonly dailySummaries = signal<DailySummary[]>([]);
   protected readonly sortDirection = signal<'asc' | 'desc'>('desc');
   protected readonly sortActive = signal('date');
-  protected readonly historyColumns = ['date', 'highF', 'lowF', 'avgHumidity', 'avgSoilMoisture', 'dailyGdd', 'cumulativeGdd'];
+  protected readonly historyColumns = ['date', 'highF', 'lowF', 'avgHumidity', 'avgSoilMoisture', 'avgSoilTempF', 'dailyGdd', 'cumulativeGdd'];
 
   // Day Detail tab state
   protected detailDate = new Date();
@@ -494,6 +533,9 @@ export class WeatherComponent implements OnInit {
   protected readonly daySoilData = computed(() =>
     this.dayReadings().some(r => r.soilMoisturePct?.length));
 
+  protected readonly daySoilTempData = computed(() =>
+    this.dayReadings().some(r => r.soilTempC?.length));
+
   protected readonly daySoilSeries = computed<ChartSeries[]>(() => {
     const recs = this.sortedDayReadings();
     const colors = ['#43a047', '#fb8c00', '#8e24aa', '#00acc1'];
@@ -504,6 +546,21 @@ export class WeatherComponent implements OnInit {
         label: `Ch ${ch + 1}`, unit: '%', color: colors[ch % colors.length],
         data: recs.filter(r => r.soilMoisturePct && r.soilMoisturePct.length > ch)
           .map(r => ({ time: r.timestamp, value: r.soilMoisturePct![ch] })),
+      });
+    }
+    return result;
+  });
+
+  protected readonly daySoilTempSeries = computed<ChartSeries[]>(() => {
+    const recs = this.sortedDayReadings();
+    const colors = ['#e53935', '#fb8c00', '#8e24aa', '#00acc1'];
+    const maxCh = Math.max(...recs.map(r => r.soilTempC?.length ?? 0), 0);
+    const result: ChartSeries[] = [];
+    for (let ch = 0; ch < maxCh; ch++) {
+      result.push({
+        label: `Ch ${ch + 1}`, unit: '°F', color: colors[ch % colors.length],
+        data: recs.filter(r => r.soilTempC && r.soilTempC.length > ch)
+          .map(r => ({ time: r.timestamp, value: r.soilTempC![ch] * 9 / 5 + 32 })),
       });
     }
     return result;
@@ -603,11 +660,14 @@ export class WeatherComponent implements OnInit {
       const soils = recs.flatMap(r => r.soilMoisturePct ?? []);
       const avgSoilMoisture = soils.length ? soils.reduce((a, b) => a + b, 0) / soils.length : null;
 
+      const soilTemps = recs.flatMap(r => r.soilTempC ?? []).map(c => c * 9 / 5 + 32);
+      const avgSoilTempF = soilTemps.length ? soilTemps.reduce((a, b) => a + b, 0) / soilTemps.length : null;
+
       const avgTemp = (highF + lowF) / 2;
       const dailyGdd = date >= gddStartStr ? Math.max(0, avgTemp - this.gddBase) : 0;
       cumGdd += dailyGdd;
 
-      return { date, highF, lowF, avgHumidity, avgSoilMoisture, dailyGdd, cumulativeGdd: cumGdd };
+      return { date, highF, lowF, avgHumidity, avgSoilMoisture, avgSoilTempF, dailyGdd, cumulativeGdd: cumGdd };
     });
   }
 
