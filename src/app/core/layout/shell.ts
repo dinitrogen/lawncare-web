@@ -239,6 +239,7 @@ export class ShellComponent implements OnInit, OnDestroy {
     { label: 'GDD Tracker', route: '/gdd', icon: 'thermostat' },
     { label: 'Equipment', route: '/equipment', icon: 'build' },
     { label: 'Calculator', route: '/calculator', icon: 'calculate' },
+    { label: 'Reminders', route: '/reminders', icon: 'event' },
     { label: 'Settings', route: '/settings', icon: 'settings' },
   ];
 
