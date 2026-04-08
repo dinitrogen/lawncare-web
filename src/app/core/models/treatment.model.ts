@@ -1,12 +1,13 @@
 export interface Treatment {
   id: string;
-  zoneId: string;
-  zoneName: string;
+  zoneIds: string[];
+  zoneNames: string[];
   productId: string;
   productName: string;
   applicationDate: string;
   amountApplied: number;
   amountUnit: string;
+  gdd?: number;
   waterVolume?: number;
   weatherConditions?: string;
   temperature?: number;

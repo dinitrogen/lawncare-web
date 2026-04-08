@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -8,6 +8,8 @@ import { DatePipe } from '@angular/common';
 import { AuthService } from '../../core/services/auth.service';
 import { TreatmentService } from '../../core/services/treatment.service';
 import { Treatment } from '../../core/models/treatment.model';
+import { YardZone } from '../../core/models/yard.model';
+import { YardService } from '../../core/services/yard.service';
 import { TreatmentFormDialogComponent } from './treatment-form-dialog';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/confirm-dialog';
 
@@ -38,14 +40,24 @@ import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/confirm-
                 <td mat-cell *matCellDef="let t">{{ t.productName }}</td>
               </ng-container>
 
-              <ng-container matColumnDef="zoneName">
-                <th mat-header-cell *matHeaderCellDef>Zone</th>
-                <td mat-cell *matCellDef="let t">{{ t.zoneName }}</td>
+              <ng-container matColumnDef="zoneNames">
+                <th mat-header-cell *matHeaderCellDef>Zones</th>
+                <td mat-cell *matCellDef="let t">{{ t.zoneNames.join(', ') }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="totalArea">
+                <th mat-header-cell *matHeaderCellDef>Total Area (sq ft)</th>
+                <td mat-cell *matCellDef="let t">{{ getTotalArea(t) }}</td>
               </ng-container>
 
               <ng-container matColumnDef="amountApplied">
                 <th mat-header-cell *matHeaderCellDef>Amount</th>
                 <td mat-cell *matCellDef="let t">{{ t.amountApplied }} {{ t.amountUnit }}</td>
+              </ng-container>
+
+              <ng-container matColumnDef="gdd">
+                <th mat-header-cell *matHeaderCellDef>GDD</th>
+                <td mat-cell *matCellDef="let t">{{ t.gdd ?? '—' }}</td>
               </ng-container>
 
               <ng-container matColumnDef="weatherConditions">
@@ -111,10 +123,20 @@ import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/confirm-
 export class TreatmentLogComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly treatmentService = inject(TreatmentService);
+  private readonly yardService = inject(YardService);
   private readonly dialog = inject(MatDialog);
 
   protected readonly treatments = signal<Treatment[]>([]);
-  protected readonly displayedColumns = ['applicationDate', 'productName', 'zoneName', 'amountApplied', 'weatherConditions', 'actions'];
+  protected readonly zones = signal<YardZone[]>([]);
+  protected readonly displayedColumns = ['applicationDate', 'productName', 'zoneNames', 'totalArea', 'amountApplied', 'gdd', 'weatherConditions', 'actions'];
+
+  private readonly zoneAreaMap = computed(() => {
+    const map = new Map<string, number>();
+    for (const zone of this.zones()) {
+      map.set(zone.id, zone.area);
+    }
+    return map;
+  });
 
   private get uid(): string {
     return this.authService.user()?.uid ?? '';
@@ -123,6 +145,12 @@ export class TreatmentLogComponent implements OnInit {
   ngOnInit(): void {
     if (!this.uid) return;
     this.treatmentService.getTreatments(this.uid).subscribe((t) => this.treatments.set(t));
+    this.yardService.getZones(this.uid).subscribe((z) => this.zones.set(z));
+  }
+
+  protected getTotalArea(treatment: Treatment): number {
+    const map = this.zoneAreaMap();
+    return (treatment.zoneIds ?? []).reduce((sum, id) => sum + (map.get(id) ?? 0), 0);
   }
 
   protected openForm(treatment?: Treatment): void {
