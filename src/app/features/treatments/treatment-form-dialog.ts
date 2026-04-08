@@ -40,8 +40,8 @@ export interface TreatmentFormDialogData {
         </mat-form-field>
 
         <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Zone</mat-label>
-          <mat-select formControlName="zoneId" (selectionChange)="onZoneSelect($event.value)">
+          <mat-label>Zones</mat-label>
+          <mat-select formControlName="zoneIds" multiple>
             @for (zone of zones(); track zone.id) {
               <mat-option [value]="zone.id">{{ zone.name }}</mat-option>
             }
@@ -64,22 +64,29 @@ export interface TreatmentFormDialogData {
           </mat-form-field>
 
           <mat-form-field appearance="outline">
-            <mat-label>Temperature (°F)</mat-label>
-            <input matInput type="number" formControlName="temperatureF" />
+            <mat-label>GDD</mat-label>
+            <input matInput type="number" formControlName="gdd" />
           </mat-form-field>
         </div>
 
-        <mat-form-field appearance="outline" class="full-width">
-          <mat-label>Weather Condition</mat-label>
-          <mat-select formControlName="weatherCondition">
-            <mat-option value="Sunny">Sunny</mat-option>
-            <mat-option value="Partly Cloudy">Partly Cloudy</mat-option>
-            <mat-option value="Overcast">Overcast</mat-option>
-            <mat-option value="Light Rain">Light Rain</mat-option>
-            <mat-option value="Rain">Rain</mat-option>
-            <mat-option value="Windy">Windy</mat-option>
-          </mat-select>
-        </mat-form-field>
+        <div class="form-row">
+          <mat-form-field appearance="outline">
+            <mat-label>Temperature (°F)</mat-label>
+            <input matInput type="number" formControlName="temperatureF" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>Weather Condition</mat-label>
+            <mat-select formControlName="weatherCondition">
+              <mat-option value="Sunny">Sunny</mat-option>
+              <mat-option value="Partly Cloudy">Partly Cloudy</mat-option>
+              <mat-option value="Overcast">Overcast</mat-option>
+              <mat-option value="Light Rain">Light Rain</mat-option>
+              <mat-option value="Rain">Rain</mat-option>
+              <mat-option value="Windy">Windy</mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
 
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Notes</mat-label>
@@ -128,11 +135,11 @@ export class TreatmentFormDialogComponent implements OnInit {
 
   protected readonly form = this.fb.nonNullable.group({
     dateApplied: ['', Validators.required],
-    zoneId: [''],
-    zoneName: [''],
+    zoneIds: [[] as string[]],
     productId: [''],
     productName: [''],
     amountUsed: [0],
+    gdd: [null as number | null],
     temperatureF: [null as number | null],
     weatherCondition: [''],
     notes: [''],
@@ -146,11 +153,11 @@ export class TreatmentFormDialogComponent implements OnInit {
       const t = this.data.treatment;
       this.form.patchValue({
         dateApplied: t.applicationDate ? new Date(t.applicationDate).toISOString().split('T')[0] : '',
-        zoneId: t.zoneId,
-        zoneName: t.zoneName,
+        zoneIds: t.zoneIds,
         productId: t.productId,
         productName: t.productName,
         amountUsed: t.amountApplied,
+        gdd: t.gdd ?? null,
         temperatureF: t.temperature ?? null,
         weatherCondition: t.weatherConditions ?? '',
         notes: t.notes ?? '',
@@ -158,11 +165,6 @@ export class TreatmentFormDialogComponent implements OnInit {
     } else {
       this.form.controls.dateApplied.setValue(new Date().toISOString().split('T')[0]);
     }
-  }
-
-  protected onZoneSelect(zoneId: string): void {
-    const zone = this.zones().find((z) => z.id === zoneId);
-    if (zone) this.form.controls.zoneName.setValue(zone.name);
   }
 
   protected onProductSelect(productId: string): void {
@@ -173,14 +175,16 @@ export class TreatmentFormDialogComponent implements OnInit {
   protected save(): void {
     if (this.form.invalid) return;
     const val = this.form.getRawValue();
+    const selectedZones = this.zones().filter((z) => val.zoneIds.includes(z.id));
     this.dialogRef.close({
-      zoneId: val.zoneId,
-      zoneName: val.zoneName,
+      zoneIds: val.zoneIds,
+      zoneNames: selectedZones.map((z) => z.name),
       productId: val.productId,
       productName: val.productName,
       applicationDate: new Date(val.dateApplied).toISOString(),
       amountApplied: val.amountUsed,
       amountUnit: 'oz',
+      gdd: val.gdd ?? undefined,
       temperature: val.temperatureF ?? undefined,
       weatherConditions: val.weatherCondition,
       notes: val.notes,

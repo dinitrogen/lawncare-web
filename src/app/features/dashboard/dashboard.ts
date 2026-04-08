@@ -156,7 +156,7 @@ import { WeatherReading } from '../../core/models/weather.model';
                   <mat-list-item>
                     <mat-icon matListItemIcon>eco</mat-icon>
                     <span matListItemTitle>{{ treat.productName }}</span>
-                    <span matListItemLine>{{ treat.zoneName }}</span>
+                    <span matListItemLine>{{ treat.zoneNames.join(', ') }}</span>
                   </mat-list-item>
                 }
               </mat-list>
