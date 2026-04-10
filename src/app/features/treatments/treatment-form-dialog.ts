@@ -5,6 +5,8 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatSelectModule } from '@angular/material/select';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
 import { ApplicationType, Treatment } from '../../core/models/treatment.model';
 import { YardZone } from '../../core/models/yard.model';
 import { Product } from '../../core/models/product.model';
@@ -26,6 +28,8 @@ export interface TreatmentFormDialogData {
     MatInputModule,
     MatButtonModule,
     MatSelectModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
   ],
   template: `
     <h2 mat-dialog-title>{{ data.treatment ? 'Edit Treatment' : 'Log Treatment' }}</h2>
@@ -33,7 +37,9 @@ export interface TreatmentFormDialogData {
       <form [formGroup]="form" class="treatment-form">
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Date Applied</mat-label>
-          <input matInput type="date" formControlName="dateApplied" />
+          <input matInput [matDatepicker]="datePicker" formControlName="dateApplied" />
+          <mat-datepicker-toggle matIconSuffix [for]="datePicker"></mat-datepicker-toggle>
+          <mat-datepicker #datePicker></mat-datepicker>
           @if (form.controls.dateApplied.hasError('required')) {
             <mat-error>Date is required</mat-error>
           }
@@ -104,6 +110,14 @@ export interface TreatmentFormDialogData {
           <input matInput formControlName="applicationRate" />
           <mat-hint>{{ rateHint() }}</mat-hint>
         </mat-form-field>
+
+        @if (form.controls.applicationType.value === 'sprayer') {
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Product Concentration</mat-label>
+            <input matInput formControlName="productConcentration" />
+            <mat-hint>{{ concentrationHint() }}</mat-hint>
+          </mat-form-field>
+        }
 
         <div class="form-row">
           <mat-form-field appearance="outline">
@@ -180,9 +194,10 @@ export class TreatmentFormDialogComponent implements OnInit {
   protected readonly zones = signal<YardZone[]>([]);
   protected readonly products = signal<Product[]>([]);
   protected readonly rateHint = signal('');
+  protected readonly concentrationHint = signal('');
 
   protected readonly form = this.fb.nonNullable.group({
-    dateApplied: ['', Validators.required],
+    dateApplied: [null as Date | null, Validators.required],
     zoneIds: [[] as string[]],
     productId: [''],
     productName: [''],
@@ -192,6 +207,7 @@ export class TreatmentFormDialogComponent implements OnInit {
     waterVolume: [null as number | null],
     spreaderSetting: [null as number | null],
     applicationRate: [''],
+    productConcentration: [''],
     gdd: [null as number | null],
     temperatureF: [null as number | null],
     weatherCondition: [''],
@@ -204,8 +220,13 @@ export class TreatmentFormDialogComponent implements OnInit {
 
     if (this.data.treatment) {
       const t = this.data.treatment;
+      // Parse YYYY-MM-DD portion as local date (not UTC) to avoid off-by-one
+      const dateParts = t.applicationDate?.split('T')[0]?.split('-');
+      const localDate = dateParts
+        ? new Date(+dateParts[0], +dateParts[1] - 1, +dateParts[2])
+        : null;
       this.form.patchValue({
-        dateApplied: t.applicationDate ? new Date(t.applicationDate).toISOString().split('T')[0] : '',
+        dateApplied: localDate,
         zoneIds: t.zoneIds,
         productId: t.productId,
         productName: t.productName,
@@ -215,19 +236,27 @@ export class TreatmentFormDialogComponent implements OnInit {
         waterVolume: t.waterVolume ?? null,
         spreaderSetting: t.spreaderSetting ?? null,
         applicationRate: t.applicationRate ?? '',
+        productConcentration: t.productConcentration ?? '',
         gdd: t.gdd ?? null,
         temperatureF: t.temperature ?? null,
         weatherCondition: t.weatherConditions ?? '',
         notes: t.notes ?? '',
       });
     } else {
-      this.form.controls.dateApplied.setValue(new Date().toISOString().split('T')[0]);
+      this.form.controls.dateApplied.setValue(new Date());
     }
 
-    // Auto-calculate application rate when relevant fields change
+    // Auto-calculate application rate and concentration when relevant fields change
     this.form.controls.zoneIds.valueChanges.subscribe(() => this.calculateRate());
-    this.form.controls.waterVolume.valueChanges.subscribe(() => this.calculateRate());
-    this.form.controls.amountUsed.valueChanges.subscribe(() => this.calculateRate());
+    this.form.controls.waterVolume.valueChanges.subscribe(() => {
+      this.calculateRate();
+      this.calculateConcentration();
+    });
+    this.form.controls.amountUsed.valueChanges.subscribe(() => {
+      this.calculateRate();
+      this.calculateConcentration();
+    });
+    this.form.controls.amountUnit.valueChanges.subscribe(() => this.calculateConcentration());
     this.form.controls.applicationType.valueChanges.subscribe((type) => {
       if (type === 'sprayer') {
         this.form.controls.amountUnit.setValue('oz');
@@ -235,6 +264,7 @@ export class TreatmentFormDialogComponent implements OnInit {
         this.form.controls.amountUnit.setValue('lbs');
       }
       this.calculateRate();
+      this.calculateConcentration();
     });
   }
 
@@ -277,23 +307,43 @@ export class TreatmentFormDialogComponent implements OnInit {
     }
   }
 
+  private calculateConcentration(): void {
+    const type = this.form.controls.applicationType.value;
+    if (type !== 'sprayer') return;
+
+    const amount = this.form.controls.amountUsed.value;
+    const unit = this.form.controls.amountUnit.value;
+    const waterVol = this.form.controls.waterVolume.value;
+
+    if (amount && amount > 0 && waterVol && waterVol > 0) {
+      const ratio = (amount / waterVol).toFixed(2);
+      const concStr = `${ratio} ${unit}/gal`;
+      this.form.controls.productConcentration.setValue(concStr);
+      this.concentrationHint.set(`${amount} ${unit} ÷ ${waterVol} gal`);
+    }
+  }
+
   protected save(): void {
     if (this.form.invalid) return;
     const val = this.form.getRawValue();
     const selectedZones = this.zones().filter((z) => val.zoneIds.includes(z.id));
     const applicationType = val.applicationType as ApplicationType | undefined;
+    // Build a local-date ISO string to avoid UTC timezone shift
+    const d = val.dateApplied!;
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T00:00:00`;
     this.dialogRef.close({
       zoneIds: val.zoneIds,
       zoneNames: selectedZones.map((z) => z.name),
       productId: val.productId,
       productName: val.productName,
-      applicationDate: new Date(val.dateApplied).toISOString(),
+      applicationDate: dateStr,
       amountApplied: val.amountUsed,
       amountUnit: val.amountUnit,
       applicationType: applicationType || undefined,
       waterVolume: val.applicationType === 'sprayer' ? (val.waterVolume ?? undefined) : undefined,
       spreaderSetting: val.applicationType === 'solid' ? (val.spreaderSetting ?? undefined) : undefined,
       applicationRate: val.applicationRate || undefined,
+      productConcentration: val.applicationType === 'sprayer' ? (val.productConcentration || undefined) : undefined,
       gdd: val.gdd ?? undefined,
       temperature: val.temperatureF ?? undefined,
       weatherConditions: val.weatherCondition,

@@ -13,6 +13,7 @@ export interface Treatment {
   waterVolume?: number;
   applicationType?: ApplicationType;
   applicationRate?: string;
+  productConcentration?: string;
   spreaderSetting?: number;
   weatherConditions?: string;
   temperature?: number;

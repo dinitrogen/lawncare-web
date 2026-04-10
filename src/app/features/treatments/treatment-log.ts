@@ -5,7 +5,9 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
 import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { DatePipe } from '@angular/common';
+import { MatSelectModule } from '@angular/material/select';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { AuthService } from '../../core/services/auth.service';
 import { TreatmentService } from '../../core/services/treatment.service';
 import { Treatment } from '../../core/models/treatment.model';
@@ -21,45 +23,59 @@ interface SeasonGroup {
   treatments: Treatment[];
 }
 
-function getSeason(date: Date): { label: string; sortKey: number } {
+function getSeason(date: Date): { label: string; sortKey: number; lawnYear: number } {
   const month = date.getMonth(); // 0-indexed
   const year = date.getFullYear();
 
   if (month >= 2 && month <= 4) {
-    return { label: `Spring ${year}`, sortKey: year * 10 + 1 };
+    // Spring: Mar-May → lawn year = calendar year
+    return { label: `Spring ${year}`, sortKey: year * 10 + 1, lawnYear: year };
   } else if (month >= 5 && month <= 7) {
-    return { label: `Summer ${year}`, sortKey: year * 10 + 2 };
+    // Summer: Jun-Aug → lawn year = calendar year
+    return { label: `Summer ${year}`, sortKey: year * 10 + 2, lawnYear: year };
   } else if (month >= 8 && month <= 10) {
-    return { label: `Fall ${year}`, sortKey: year * 10 + 3 };
+    // Fall: Sep-Nov → lawn year = calendar year
+    return { label: `Fall ${year}`, sortKey: year * 10 + 3, lawnYear: year };
   } else {
-    // Dec belongs to the winter of "next" year, Jan-Feb to current year
-    const winterYear = month === 11 ? year + 1 : year;
-    return { label: `Winter ${winterYear}`, sortKey: winterYear * 10 + 0 };
+    // Winter: Dec belongs to current year's lawn year, Jan-Feb to previous year's lawn year
+    const lawnYear = month === 11 ? year : year - 1;
+    const winterLabel = month === 11 ? year + 1 : year;
+    return { label: `Winter ${winterLabel}`, sortKey: lawnYear * 10 + 4, lawnYear };
   }
 }
 
 @Component({
   selector: 'app-treatment-log',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatCardModule, MatButtonModule, MatIconModule, MatTableModule, MatTooltipModule, DatePipe],
+  imports: [MatCardModule, MatButtonModule, MatIconModule, MatTableModule, MatTooltipModule, MatSelectModule, MatFormFieldModule, DatePipe, DecimalPipe],
   template: `
     <div class="content-container">
       <div class="page-header">
         <h1 class="page-title">Treatment Log</h1>
-        <button mat-flat-button (click)="openForm()">
-          <mat-icon>add</mat-icon> Log Treatment
-        </button>
+        <div class="header-controls">
+          <mat-form-field appearance="outline" class="year-filter">
+            <mat-label>Year</mat-label>
+            <mat-select [value]="selectedYear()" (selectionChange)="selectedYear.set($event.value)">
+              @for (year of availableYears(); track year) {
+                <mat-option [value]="year">{{ year }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <button mat-flat-button (click)="openForm()">
+            <mat-icon>add</mat-icon> Log Treatment
+          </button>
+        </div>
       </div>
 
-      @if (seasonGroups().length) {
-        @for (group of seasonGroups(); track group.label) {
+      @if (filteredSeasonGroups().length) {
+        @for (group of filteredSeasonGroups(); track group.label) {
           <h2 class="season-header">{{ group.label }}</h2>
           <mat-card>
             <mat-card-content class="table-container">
               <table mat-table [dataSource]="group.treatments">
                 <ng-container matColumnDef="applicationDate">
                   <th mat-header-cell *matHeaderCellDef>Date</th>
-                  <td mat-cell *matCellDef="let t">{{ t.applicationDate | date }}</td>
+                  <td mat-cell *matCellDef="let t">{{ t.applicationDate | date: 'mediumDate' }}</td>
                 </ng-container>
 
                 <ng-container matColumnDef="productName">
@@ -69,17 +85,42 @@ function getSeason(date: Date): { label: string; sortKey: number } {
 
                 <ng-container matColumnDef="zoneNames">
                   <th mat-header-cell *matHeaderCellDef>Zones</th>
-                  <td mat-cell *matCellDef="let t">{{ t.zoneNames.join(', ') }}</td>
+                  <td mat-cell *matCellDef="let t">{{ t.zoneNames?.join(', ') }}</td>
                 </ng-container>
 
                 <ng-container matColumnDef="totalArea">
-                  <th mat-header-cell *matHeaderCellDef>Total Area (sq ft)</th>
-                  <td mat-cell *matCellDef="let t">{{ getTotalArea(t) }}</td>
+                  <th mat-header-cell *matHeaderCellDef>Area (sq ft)</th>
+                  <td mat-cell *matCellDef="let t">{{ getTotalArea(t) | number }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="applicationType">
+                  <th mat-header-cell *matHeaderCellDef>Type</th>
+                  <td mat-cell *matCellDef="let t">{{ t.applicationType ?? '—' }}</td>
                 </ng-container>
 
                 <ng-container matColumnDef="amountApplied">
                   <th mat-header-cell *matHeaderCellDef>Amount</th>
                   <td mat-cell *matCellDef="let t">{{ t.amountApplied }} {{ t.amountUnit }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="waterVolume">
+                  <th mat-header-cell *matHeaderCellDef>Water (gal)</th>
+                  <td mat-cell *matCellDef="let t">{{ t.waterVolume ?? '—' }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="productConcentration">
+                  <th mat-header-cell *matHeaderCellDef>Concentration</th>
+                  <td mat-cell *matCellDef="let t">{{ t.productConcentration ?? '—' }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="applicationRate">
+                  <th mat-header-cell *matHeaderCellDef>Rate</th>
+                  <td mat-cell *matCellDef="let t">{{ t.applicationRate ?? '—' }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="spreaderSetting">
+                  <th mat-header-cell *matHeaderCellDef>Spreader</th>
+                  <td mat-cell *matCellDef="let t">{{ t.spreaderSetting ?? '—' }}</td>
                 </ng-container>
 
                 <ng-container matColumnDef="gdd">
@@ -90,6 +131,11 @@ function getSeason(date: Date): { label: string; sortKey: number } {
                 <ng-container matColumnDef="weatherConditions">
                   <th mat-header-cell *matHeaderCellDef>Weather</th>
                   <td mat-cell *matCellDef="let t">{{ t.weatherConditions }}</td>
+                </ng-container>
+
+                <ng-container matColumnDef="temperature">
+                  <th mat-header-cell *matHeaderCellDef>Temp (°F)</th>
+                  <td mat-cell *matCellDef="let t">{{ t.temperature ?? '—' }}</td>
                 </ng-container>
 
                 <ng-container matColumnDef="notes">
@@ -146,6 +192,14 @@ function getSeason(date: Date): { label: string; sortKey: number } {
       flex-wrap: wrap;
       gap: 8px;
     }
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .year-filter {
+      width: 120px;
+    }
     .season-header {
       margin: 24px 0 8px;
       font-size: 1.2rem;
@@ -181,8 +235,13 @@ export class TreatmentLogComponent implements OnInit {
 
   protected readonly treatments = signal<Treatment[]>([]);
   protected readonly zones = signal<YardZone[]>([]);
+  protected readonly selectedYear = signal(new Date().getFullYear());
+
   protected readonly displayedColumns = [
-    'applicationDate', 'productName', 'zoneNames', 'totalArea', 'amountApplied', 'gdd', 'weatherConditions', 'notes', 'actions',
+    'applicationDate', 'productName', 'zoneNames', 'totalArea',
+    'applicationType', 'amountApplied', 'waterVolume', 'productConcentration',
+    'applicationRate', 'spreaderSetting', 'gdd', 'temperature', 'weatherConditions',
+    'notes', 'actions',
   ];
 
   private readonly zoneAreaMap = computed(() => {
@@ -193,19 +252,36 @@ export class TreatmentLogComponent implements OnInit {
     return map;
   });
 
-  protected readonly seasonGroups = computed<SeasonGroup[]>(() => {
-    const map = new Map<string, SeasonGroup>();
+  /** All treatments grouped by season. */
+  private readonly allSeasonGroups = computed<(SeasonGroup & { lawnYear: number })[]>(() => {
+    const map = new Map<string, SeasonGroup & { lawnYear: number }>();
     for (const t of this.treatments()) {
       const date = new Date(t.applicationDate);
-      const { label, sortKey } = getSeason(date);
+      const { label, sortKey, lawnYear } = getSeason(date);
       let group = map.get(label);
       if (!group) {
-        group = { label, sortKey, treatments: [] };
+        group = { label, sortKey, lawnYear, treatments: [] };
         map.set(label, group);
       }
       group.treatments.push(t);
     }
     return Array.from(map.values()).sort((a, b) => b.sortKey - a.sortKey);
+  });
+
+  /** Unique lawn years present in the data, plus the current year. */
+  protected readonly availableYears = computed<number[]>(() => {
+    const years = new Set<number>();
+    years.add(new Date().getFullYear());
+    for (const g of this.allSeasonGroups()) {
+      years.add(g.lawnYear);
+    }
+    return Array.from(years).sort((a, b) => b - a);
+  });
+
+  /** Season groups filtered by the selected lawn year. */
+  protected readonly filteredSeasonGroups = computed<SeasonGroup[]>(() => {
+    const year = this.selectedYear();
+    return this.allSeasonGroups().filter((g) => g.lawnYear === year);
   });
 
   private get uid(): string {
