@@ -1,3 +1,5 @@
+export type ApplicationType = 'sprayer' | 'solid';
+
 export interface Treatment {
   id: string;
   zoneIds: string[];
@@ -9,6 +11,9 @@ export interface Treatment {
   amountUnit: string;
   gdd?: number;
   waterVolume?: number;
+  applicationType?: ApplicationType;
+  applicationRate?: string;
+  spreaderSetting?: number;
   weatherConditions?: string;
   temperature?: number;
   notes?: string;

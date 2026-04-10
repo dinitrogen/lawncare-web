@@ -5,7 +5,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { MatSelectModule } from '@angular/material/select';
-import { Treatment } from '../../core/models/treatment.model';
+import { ApplicationType, Treatment } from '../../core/models/treatment.model';
 import { YardZone } from '../../core/models/yard.model';
 import { Product } from '../../core/models/product.model';
 import { YardService } from '../../core/services/yard.service';
@@ -43,7 +43,7 @@ export interface TreatmentFormDialogData {
           <mat-label>Zones</mat-label>
           <mat-select formControlName="zoneIds" multiple>
             @for (zone of zones(); track zone.id) {
-              <mat-option [value]="zone.id">{{ zone.name }}</mat-option>
+              <mat-option [value]="zone.id">{{ zone.name }} ({{ zone.area }} sq ft)</mat-option>
             }
           </mat-select>
         </mat-form-field>
@@ -57,19 +57,60 @@ export interface TreatmentFormDialogData {
           </mat-select>
         </mat-form-field>
 
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Application Type</mat-label>
+          <mat-select formControlName="applicationType">
+            <mat-option value="sprayer">Sprayer (liquid)</mat-option>
+            <mat-option value="solid">Solid (granular)</mat-option>
+          </mat-select>
+        </mat-form-field>
+
         <div class="form-row">
-          <mat-form-field appearance="outline">
-            <mat-label>Amount Used (oz)</mat-label>
+          <mat-form-field appearance="outline" class="flex-2">
+            <mat-label>Product Amount</mat-label>
             <input matInput type="number" formControlName="amountUsed" />
           </mat-form-field>
+          <mat-form-field appearance="outline" class="flex-1">
+            <mat-label>Unit</mat-label>
+            <mat-select formControlName="amountUnit">
+              @if (form.controls.applicationType.value === 'solid') {
+                <mat-option value="lbs">lbs</mat-option>
+                <mat-option value="bags">bags</mat-option>
+              } @else {
+                <mat-option value="oz">oz</mat-option>
+                <mat-option value="grams">grams</mat-option>
+                <mat-option value="ml">ml</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        </div>
 
+        @if (form.controls.applicationType.value === 'sprayer') {
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Water Volume (gallons)</mat-label>
+            <input matInput type="number" formControlName="waterVolume" />
+          </mat-form-field>
+        }
+
+        @if (form.controls.applicationType.value === 'solid') {
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Spreader Setting</mat-label>
+            <input matInput type="number" formControlName="spreaderSetting" />
+          </mat-form-field>
+        }
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Application Rate (per 1,000 sq ft)</mat-label>
+          <input matInput formControlName="applicationRate" />
+          <mat-hint>{{ rateHint() }}</mat-hint>
+        </mat-form-field>
+
+        <div class="form-row">
           <mat-form-field appearance="outline">
             <mat-label>GDD</mat-label>
             <input matInput type="number" formControlName="gdd" />
           </mat-form-field>
-        </div>
 
-        <div class="form-row">
           <mat-form-field appearance="outline">
             <mat-label>Temperature (°F)</mat-label>
             <input matInput type="number" formControlName="temperatureF" />
@@ -118,6 +159,12 @@ export interface TreatmentFormDialogData {
       flex: 1;
       min-width: 140px;
     }
+    .flex-1 {
+      flex: 1;
+    }
+    .flex-2 {
+      flex: 2;
+    }
     .full-width {
       width: 100%;
     }
@@ -132,13 +179,19 @@ export class TreatmentFormDialogComponent implements OnInit {
 
   protected readonly zones = signal<YardZone[]>([]);
   protected readonly products = signal<Product[]>([]);
+  protected readonly rateHint = signal('');
 
   protected readonly form = this.fb.nonNullable.group({
     dateApplied: ['', Validators.required],
     zoneIds: [[] as string[]],
     productId: [''],
     productName: [''],
+    applicationType: ['' as string],
     amountUsed: [0],
+    amountUnit: ['oz'],
+    waterVolume: [null as number | null],
+    spreaderSetting: [null as number | null],
+    applicationRate: [''],
     gdd: [null as number | null],
     temperatureF: [null as number | null],
     weatherCondition: [''],
@@ -156,7 +209,12 @@ export class TreatmentFormDialogComponent implements OnInit {
         zoneIds: t.zoneIds,
         productId: t.productId,
         productName: t.productName,
+        applicationType: t.applicationType ?? '',
         amountUsed: t.amountApplied,
+        amountUnit: t.amountUnit || 'oz',
+        waterVolume: t.waterVolume ?? null,
+        spreaderSetting: t.spreaderSetting ?? null,
+        applicationRate: t.applicationRate ?? '',
         gdd: t.gdd ?? null,
         temperatureF: t.temperature ?? null,
         weatherCondition: t.weatherConditions ?? '',
@@ -165,6 +223,19 @@ export class TreatmentFormDialogComponent implements OnInit {
     } else {
       this.form.controls.dateApplied.setValue(new Date().toISOString().split('T')[0]);
     }
+
+    // Auto-calculate application rate when relevant fields change
+    this.form.controls.zoneIds.valueChanges.subscribe(() => this.calculateRate());
+    this.form.controls.waterVolume.valueChanges.subscribe(() => this.calculateRate());
+    this.form.controls.amountUsed.valueChanges.subscribe(() => this.calculateRate());
+    this.form.controls.applicationType.valueChanges.subscribe((type) => {
+      if (type === 'sprayer') {
+        this.form.controls.amountUnit.setValue('oz');
+      } else if (type === 'solid') {
+        this.form.controls.amountUnit.setValue('lbs');
+      }
+      this.calculateRate();
+    });
   }
 
   protected onProductSelect(productId: string): void {
@@ -172,10 +243,45 @@ export class TreatmentFormDialogComponent implements OnInit {
     if (product) this.form.controls.productName.setValue(product.name);
   }
 
+  private calculateRate(): void {
+    const zoneIds = this.form.controls.zoneIds.value;
+    const totalArea = this.zones()
+      .filter((z) => zoneIds.includes(z.id))
+      .reduce((sum, z) => sum + z.area, 0);
+
+    if (!totalArea) {
+      this.rateHint.set('Select a zone to auto-calculate');
+      return;
+    }
+
+    const type = this.form.controls.applicationType.value;
+    const kSqFt = totalArea / 1000;
+
+    if (type === 'sprayer') {
+      const waterVol = this.form.controls.waterVolume.value;
+      if (waterVol && waterVol > 0) {
+        const ratePerK = (waterVol / kSqFt).toFixed(2);
+        const rateStr = `${ratePerK} gal/1,000 sq ft`;
+        this.form.controls.applicationRate.setValue(rateStr);
+        this.rateHint.set(`${waterVol} gal ÷ ${kSqFt.toFixed(1)}k sq ft`);
+      }
+    } else if (type === 'solid') {
+      const amount = this.form.controls.amountUsed.value;
+      const unit = this.form.controls.amountUnit.value;
+      if (amount && amount > 0) {
+        const ratePerK = (amount / kSqFt).toFixed(2);
+        const rateStr = `${ratePerK} ${unit}/1,000 sq ft`;
+        this.form.controls.applicationRate.setValue(rateStr);
+        this.rateHint.set(`${amount} ${unit} ÷ ${kSqFt.toFixed(1)}k sq ft`);
+      }
+    }
+  }
+
   protected save(): void {
     if (this.form.invalid) return;
     const val = this.form.getRawValue();
     const selectedZones = this.zones().filter((z) => val.zoneIds.includes(z.id));
+    const applicationType = val.applicationType as ApplicationType | undefined;
     this.dialogRef.close({
       zoneIds: val.zoneIds,
       zoneNames: selectedZones.map((z) => z.name),
@@ -183,7 +289,11 @@ export class TreatmentFormDialogComponent implements OnInit {
       productName: val.productName,
       applicationDate: new Date(val.dateApplied).toISOString(),
       amountApplied: val.amountUsed,
-      amountUnit: 'oz',
+      amountUnit: val.amountUnit,
+      applicationType: applicationType || undefined,
+      waterVolume: val.applicationType === 'sprayer' ? (val.waterVolume ?? undefined) : undefined,
+      spreaderSetting: val.applicationType === 'solid' ? (val.spreaderSetting ?? undefined) : undefined,
+      applicationRate: val.applicationRate || undefined,
       gdd: val.gdd ?? undefined,
       temperature: val.temperatureF ?? undefined,
       weatherConditions: val.weatherCondition,
