@@ -22,6 +22,15 @@ export interface WeatherReading {
   feelsLikeC: number | null;
 }
 
+export interface DailySummary {
+  date: string;
+  highTempC: number;
+  lowTempC: number;
+  avgHumidityPct: number;
+  avgSoilMoisturePct: number | null;
+  avgSoilTempC: number | null;
+}
+
 export interface DailyForecast {
   date: string;
   tempMaxF: number;

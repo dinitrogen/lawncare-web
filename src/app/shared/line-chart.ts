@@ -48,7 +48,7 @@ export interface ChartSeries {
         </svg>
       </div>
     } @else {
-      <p class="no-data">No data available for this day.</p>
+      <p class="no-data">No data available for this period.</p>
     }
   `,
   styles: `
@@ -146,14 +146,21 @@ export class LineChartComponent {
     }
     const sorted = [...allTimes].sort();
     if (sorted.length <= 1) return [];
+
+    const rangeMs = new Date(sorted[sorted.length - 1]).getTime() - new Date(sorted[0]).getTime();
+    const multiDay = rangeMs > 24 * 60 * 60 * 1000;
+
     // Show up to 8 evenly spaced labels
     const step = Math.max(1, Math.floor(sorted.length / 8));
     const ticks = [];
     for (let i = 0; i < sorted.length; i += step) {
       const t = sorted[i];
       const date = new Date(t);
+      const label = multiDay
+        ? `${date.getMonth() + 1}/${date.getDate()}`
+        : `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
       ticks.push({
-        label: `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`,
+        label,
         px: this.xToPixel(t, sorted[0], sorted[sorted.length - 1]),
       });
     }

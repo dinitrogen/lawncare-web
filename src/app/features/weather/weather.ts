@@ -14,10 +14,10 @@ import { DecimalPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { WeatherService } from '../../core/services/weather.service';
-import { WeatherReading } from '../../core/models/weather.model';
+import { WeatherReading, DailySummary } from '../../core/models/weather.model';
 import { LineChartComponent, ChartSeries } from '../../shared/line-chart';
 
-interface DailySummary {
+interface HistoryRow {
   date: string;
   highF: number;
   lowF: number;
@@ -336,14 +336,25 @@ interface DailySummary {
         <!-- Day Detail Tab -->
         <mat-tab label="Day Detail">
           <div class="history-controls">
+            <div class="preset-buttons">
+              <button mat-stroked-button (click)="setDetailRange('today')">Today</button>
+              <button mat-stroked-button (click)="setDetailRange('week')">Past Week</button>
+              <button mat-stroked-button (click)="setDetailRange('month')">Past Month</button>
+            </div>
             <mat-form-field appearance="outline">
-              <mat-label>Select Date</mat-label>
-              <input matInput [matDatepicker]="detailPicker" [(ngModel)]="detailDate">
-              <mat-datepicker-toggle matIconSuffix [for]="detailPicker"></mat-datepicker-toggle>
-              <mat-datepicker #detailPicker></mat-datepicker>
+              <mat-label>From</mat-label>
+              <input matInput [matDatepicker]="detailFromPicker" [(ngModel)]="detailFrom">
+              <mat-datepicker-toggle matIconSuffix [for]="detailFromPicker"></mat-datepicker-toggle>
+              <mat-datepicker #detailFromPicker></mat-datepicker>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>To</mat-label>
+              <input matInput [matDatepicker]="detailToPicker" [(ngModel)]="detailTo">
+              <mat-datepicker-toggle matIconSuffix [for]="detailToPicker"></mat-datepicker-toggle>
+              <mat-datepicker #detailToPicker></mat-datepicker>
             </mat-form-field>
             <button mat-flat-button (click)="loadDayDetail()">
-              <mat-icon>search</mat-icon> View Day
+              <mat-icon>search</mat-icon> Load
             </button>
           </div>
 
@@ -457,6 +468,10 @@ interface DailySummary {
       align-items: center;
       padding: 16px 0;
     }
+    .preset-buttons {
+      display: flex;
+      gap: 8px;
+    }
     .gdd-base-field {
       max-width: 120px;
     }
@@ -495,13 +510,14 @@ export class WeatherComponent implements OnInit {
   protected gddBase = 50;
   protected gddStartDate = new Date(new Date().getFullYear(), 1, 15);
   protected readonly historyLoading = signal(false);
-  protected readonly dailySummaries = signal<DailySummary[]>([]);
+  protected readonly dailySummaries = signal<HistoryRow[]>([]);
   protected readonly sortDirection = signal<'asc' | 'desc'>('desc');
   protected readonly sortActive = signal('date');
   protected readonly historyColumns = ['date', 'highF', 'lowF', 'avgHumidity', 'avgSoilMoisture', 'avgSoilTempF', 'dailyGdd', 'cumulativeGdd'];
 
   // Day Detail tab state
-  protected detailDate = new Date();
+  protected detailFrom = new Date();
+  protected detailTo = new Date();
   protected readonly dayDetailLoading = signal(false);
   protected readonly dayReadings = signal<WeatherReading[]>([]);
 
@@ -586,7 +602,7 @@ export class WeatherComponent implements OnInit {
   protected readonly sortedSummaries = computed(() => {
     const data = [...this.dailySummaries()];
     const dir = this.sortDirection();
-    const col = this.sortActive() as keyof DailySummary;
+    const col = this.sortActive() as keyof HistoryRow;
     data.sort((a, b) => {
       const aVal = a[col] ?? 0;
       const bVal = b[col] ?? 0;
@@ -608,9 +624,9 @@ export class WeatherComponent implements OnInit {
     this.historyLoading.set(true);
     const from = this.historyFrom.toISOString();
     const to = new Date(this.historyTo.getTime() + 86400000).toISOString(); // include full day
-    this.weatherService.getHistory(from, to, 500).subscribe({
-      next: (readings) => {
-        this.dailySummaries.set(this.aggregateDaily(readings));
+    this.weatherService.getDailySummaries(from, to).subscribe({
+      next: (summaries) => {
+        this.dailySummaries.set(this.toHistoryRows(summaries));
         this.historyLoading.set(false);
       },
       error: () => this.historyLoading.set(false),
@@ -624,10 +640,9 @@ export class WeatherComponent implements OnInit {
 
   protected loadDayDetail(): void {
     this.dayDetailLoading.set(true);
-    const dateStr = this.detailDate.toISOString().split('T')[0];
-    const from = new Date(`${dateStr}T00:00:00`).toISOString();
-    const to = new Date(`${dateStr}T23:59:59`).toISOString();
-    this.weatherService.getHistory(from, to, 500).subscribe({
+    const from = new Date(this.detailFrom.getFullYear(), this.detailFrom.getMonth(), this.detailFrom.getDate()).toISOString();
+    const to = new Date(this.detailTo.getFullYear(), this.detailTo.getMonth(), this.detailTo.getDate(), 23, 59, 59).toISOString();
+    this.weatherService.getHistory(from, to, 50000).subscribe({
       next: (readings) => {
         this.dayReadings.set(readings);
         this.dayDetailLoading.set(false);
@@ -636,38 +651,45 @@ export class WeatherComponent implements OnInit {
     });
   }
 
-  private aggregateDaily(readings: WeatherReading[]): DailySummary[] {
-    const byDate = new Map<string, WeatherReading[]>();
-    for (const r of readings) {
-      const date = r.timestamp.split('T')[0];
-      const arr = byDate.get(date) ?? [];
-      arr.push(r);
-      byDate.set(date, arr);
+  protected setDetailRange(preset: 'today' | 'week' | 'month'): void {
+    const now = new Date();
+    this.detailTo = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    switch (preset) {
+      case 'today':
+        this.detailFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'week':
+        this.detailFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+        break;
+      case 'month':
+        this.detailFrom = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+        break;
     }
+    this.loadDayDetail();
+  }
 
+  private toHistoryRows(summaries: DailySummary[]): HistoryRow[] {
     const gddStartStr = this.gddStartDate.toISOString().split('T')[0];
-    const sorted = [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const sorted = [...summaries].sort((a, b) => a.date.localeCompare(b.date));
     let cumGdd = 0;
 
-    return sorted.map(([date, recs]) => {
-      const temps = recs.filter(r => r.outdoorTempC !== null).map(r => r.outdoorTempC! * 9 / 5 + 32);
-      const highF = temps.length ? Math.max(...temps) : 0;
-      const lowF = temps.length ? Math.min(...temps) : 0;
-
-      const humidities = recs.filter(r => r.outdoorHumidityPct !== null).map(r => r.outdoorHumidityPct!);
-      const avgHumidity = humidities.length ? humidities.reduce((a, b) => a + b, 0) / humidities.length : 0;
-
-      const soils = recs.flatMap(r => r.soilMoisturePct ?? []);
-      const avgSoilMoisture = soils.length ? soils.reduce((a, b) => a + b, 0) / soils.length : null;
-
-      const soilTemps = recs.flatMap(r => r.soilTempC ?? []).map(c => c * 9 / 5 + 32);
-      const avgSoilTempF = soilTemps.length ? soilTemps.reduce((a, b) => a + b, 0) / soilTemps.length : null;
-
+    return sorted.map((s) => {
+      const highF = s.highTempC * 9 / 5 + 32;
+      const lowF = s.lowTempC * 9 / 5 + 32;
       const avgTemp = (highF + lowF) / 2;
-      const dailyGdd = date >= gddStartStr ? Math.max(0, avgTemp - this.gddBase) : 0;
+      const dailyGdd = s.date >= gddStartStr ? Math.max(0, avgTemp - this.gddBase) : 0;
       cumGdd += dailyGdd;
 
-      return { date, highF, lowF, avgHumidity, avgSoilMoisture, avgSoilTempF, dailyGdd, cumulativeGdd: cumGdd };
+      return {
+        date: s.date,
+        highF,
+        lowF,
+        avgHumidity: s.avgHumidityPct,
+        avgSoilMoisture: s.avgSoilMoisturePct,
+        avgSoilTempF: s.avgSoilTempC !== null ? s.avgSoilTempC * 9 / 5 + 32 : null,
+        dailyGdd,
+        cumulativeGdd: cumGdd,
+      };
     });
   }
 

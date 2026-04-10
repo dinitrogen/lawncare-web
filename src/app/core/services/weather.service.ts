@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { WeatherReading, WeatherForecastResponse } from '../models/weather.model';
+import { WeatherReading, WeatherForecastResponse, DailySummary } from '../models/weather.model';
 import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
@@ -18,6 +18,11 @@ export class WeatherService {
     if (from) params = params.set('from', from);
     if (to) params = params.set('to', to);
     return this.http.get<WeatherReading[]>(`${this.apiUrl}/api/weather/history`, { params });
+  }
+
+  getDailySummaries(from: string, to: string): Observable<DailySummary[]> {
+    const params = new HttpParams().set('from', from).set('to', to);
+    return this.http.get<DailySummary[]>(`${this.apiUrl}/api/weather/daily-summaries`, { params });
   }
 
   getForecast(lat: number, lon: number): Observable<WeatherForecastResponse> {
