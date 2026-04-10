@@ -185,6 +185,12 @@ function getSeason(date: Date): { label: string; sortKey: number; lawnYear: numb
     </div>
   `,
   styles: `
+    :host {
+      display: block;
+    }
+    :host ::ng-deep .content-container {
+      max-width: 1400px;
+    }
     .page-header {
       display: flex;
       justify-content: space-between;
