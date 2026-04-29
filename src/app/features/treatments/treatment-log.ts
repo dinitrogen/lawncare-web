@@ -75,12 +75,12 @@ function getSeason(date: Date): { label: string; sortKey: number; lawnYear: numb
               <table mat-table [dataSource]="group.treatments">
                 <ng-container matColumnDef="applicationDate">
                   <th mat-header-cell *matHeaderCellDef>Date</th>
-                  <td mat-cell *matCellDef="let t">{{ t.applicationDate | date: 'mediumDate' }}</td>
+                  <td mat-cell *matCellDef="let t">{{ t.applicationDate | date: 'mediumDate' : 'UTC' }}</td>
                 </ng-container>
 
-                <ng-container matColumnDef="productName">
-                  <th mat-header-cell *matHeaderCellDef>Product</th>
-                  <td mat-cell *matCellDef="let t">{{ t.productName }}</td>
+                <ng-container matColumnDef="products">
+                  <th mat-header-cell *matHeaderCellDef>Product(s)</th>
+                  <td mat-cell *matCellDef="let t">{{ getProductNames(t) }}</td>
                 </ng-container>
 
                 <ng-container matColumnDef="zoneNames">
@@ -100,7 +100,15 @@ function getSeason(date: Date): { label: string; sortKey: number; lawnYear: numb
 
                 <ng-container matColumnDef="amountApplied">
                   <th mat-header-cell *matHeaderCellDef>Amount</th>
-                  <td mat-cell *matCellDef="let t">{{ t.amountApplied }} {{ t.amountUnit }}</td>
+                  <td mat-cell *matCellDef="let t">
+                    @if (getLineItems(t).length) {
+                      @for (li of getLineItems(t); track li.productId) {
+                        <div>{{ li.amountApplied }} {{ li.amountUnit }}</div>
+                      }
+                    } @else {
+                      {{ t.amountApplied }} {{ t.amountUnit }}
+                    }
+                  </td>
                 </ng-container>
 
                 <ng-container matColumnDef="waterVolume">
@@ -110,7 +118,15 @@ function getSeason(date: Date): { label: string; sortKey: number; lawnYear: numb
 
                 <ng-container matColumnDef="productConcentration">
                   <th mat-header-cell *matHeaderCellDef>Concentration</th>
-                  <td mat-cell *matCellDef="let t">{{ t.productConcentration ?? '—' }}</td>
+                  <td mat-cell *matCellDef="let t">
+                    @if (getLineItems(t).length) {
+                      @for (li of getLineItems(t); track li.productId) {
+                        <div>{{ li.productConcentration ?? '—' }}</div>
+                      }
+                    } @else {
+                      {{ t.productConcentration ?? '—' }}
+                    }
+                  </td>
                 </ng-container>
 
                 <ng-container matColumnDef="applicationRate">
@@ -244,7 +260,7 @@ export class TreatmentLogComponent implements OnInit {
   protected readonly selectedYear = signal(new Date().getFullYear());
 
   protected readonly displayedColumns = [
-    'applicationDate', 'productName', 'zoneNames', 'totalArea',
+    'applicationDate', 'products', 'zoneNames', 'totalArea',
     'applicationType', 'amountApplied', 'waterVolume', 'productConcentration',
     'applicationRate', 'spreaderSetting', 'gdd', 'temperature', 'weatherConditions',
     'notes', 'actions',
@@ -262,7 +278,11 @@ export class TreatmentLogComponent implements OnInit {
   private readonly allSeasonGroups = computed<(SeasonGroup & { lawnYear: number })[]>(() => {
     const map = new Map<string, SeasonGroup & { lawnYear: number }>();
     for (const t of this.treatments()) {
-      const date = new Date(t.applicationDate);
+      // Parse date parts to avoid UTC-to-local timezone shift
+      const parts = t.applicationDate?.split('T')[0]?.split('-');
+      const date = parts
+        ? new Date(+parts[0], +parts[1] - 1, +parts[2])
+        : new Date(t.applicationDate);
       const { label, sortKey, lawnYear } = getSeason(date);
       let group = map.get(label);
       if (!group) {
@@ -300,6 +320,17 @@ export class TreatmentLogComponent implements OnInit {
     this.yardService.getZones(this.uid).subscribe((z) => this.zones.set(z));
   }
 
+  protected getLineItems(t: Treatment): typeof t.lineItems {
+    return t.lineItems ?? [];
+  }
+
+  protected getProductNames(t: Treatment): string {
+    if (t.lineItems?.length) {
+      return t.lineItems.map((li) => li.productName).join(', ');
+    }
+    return t.productName ?? '—';
+  }
+
   protected getTotalArea(treatment: Treatment): number {
     const map = this.zoneAreaMap();
     return (treatment.zoneIds ?? []).reduce((sum, id) => sum + (map.get(id) ?? 0), 0);
@@ -307,10 +338,13 @@ export class TreatmentLogComponent implements OnInit {
 
   protected viewNotes(treatment: Treatment): void {
     const dateStr = this.datePipe.transform(treatment.applicationDate, 'mediumDate') ?? '';
+    const productNames = treatment.lineItems?.map((li) => li.productName).join(', ')
+      ?? treatment.productName
+      ?? 'Treatment';
     this.dialog.open(TreatmentNotesDialogComponent, {
       width: '450px',
       data: {
-        productName: treatment.productName,
+        productName: productNames,
         date: dateStr,
         notes: treatment.notes,
       } as TreatmentNotesDialogData,
